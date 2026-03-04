@@ -42,17 +42,19 @@ Your context is organized into 5 sections:
 }
 ```
 
-See [docs/installation.md](docs/installation.md) for setup guides for 15+ AI tools.
+See [piut.com/docs](https://piut.com/docs#installation) for setup guides for 15+ AI tools.
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [**skill.md**](skill.md) | AI skill file — drop into any project so AI tools know how to use your context |
-| [**Installation**](docs/installation.md) | Setup guides for Claude, ChatGPT, Cursor, Copilot, and 11 more tools |
-| [**API Reference**](docs/api-reference.md) | Code examples in cURL, Python, Node.js, Go, and Ruby |
-| [**Rate Limits & Errors**](docs/rate-limits.md) | Limits by plan, error codes, and response headers |
-| [**Context Files Guide**](docs/context-files.md) | Where to find your existing context in 14 AI platforms |
+| [**skill.md**](skill.md) | AI skill file — MCP tools, rate limits, error codes |
+| [**Installation**](https://piut.com/docs#installation) | Setup guides for Claude, ChatGPT, Cursor, Copilot, and more |
+| [**API Reference**](https://piut.com/docs#api-examples) | Code examples in cURL, Python, Node.js, Go, and Ruby |
+| [**Rate Limits**](https://piut.com/docs#limits) | Limits by plan, error codes, and response headers |
+| [**Context Files**](https://piut.com/docs#context-files) | Where to find your existing context in 14 AI platforms |
+
+All documentation is maintained at [piut.com/docs](https://piut.com/docs) — the interactive version with credential auto-fill and setup guides.
 
 ## MCP Tools
 
