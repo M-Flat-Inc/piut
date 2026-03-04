@@ -1,0 +1,20 @@
+name: Security Scan
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  security-scan:
+    name: Secret & Sensitive Data Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run security scan
+        run: bash .github/scripts/security-scan.sh
