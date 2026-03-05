@@ -112,3 +112,90 @@ export async function pullFiles(
 
   return res.json()
 }
+
+export interface FileVersionInfo {
+  id: string
+  fileId: string
+  version: number
+  contentHash: string
+  contentSize: number
+  changeSummary: string | null
+  createdAt: string
+}
+
+export interface VersionsResponse {
+  fileId: string
+  projectName: string
+  filePath: string
+  currentVersion: number
+  versions: FileVersionInfo[]
+}
+
+export interface VersionContentResponse {
+  id: string
+  fileId: string
+  version: number
+  content: string
+  contentHash: string
+  contentSize: number
+  changeSummary: string | null
+  createdAt: string
+}
+
+/** List version history for a file */
+export async function listFileVersions(
+  apiKey: string,
+  fileId: string,
+): Promise<VersionsResponse> {
+  const res = await fetch(`${API_BASE}/api/sync/files/${fileId}/versions`, {
+    headers: authHeaders(apiKey),
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Version list failed (HTTP ${res.status})`)
+  }
+
+  return res.json()
+}
+
+/** Get a specific version's content */
+export async function getFileVersion(
+  apiKey: string,
+  fileId: string,
+  version: number,
+): Promise<VersionContentResponse> {
+  const res = await fetch(`${API_BASE}/api/sync/files/${fileId}/versions/${version}`, {
+    headers: authHeaders(apiKey),
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Version fetch failed (HTTP ${res.status})`)
+  }
+
+  return res.json()
+}
+
+/** Resolve a sync conflict */
+export async function resolveConflict(
+  apiKey: string,
+  fileId: string,
+  resolution: 'keep-local' | 'keep-cloud',
+  localContent?: string,
+  deviceId?: string,
+  deviceName?: string,
+): Promise<{ resolution: string; file: Record<string, unknown> }> {
+  const res = await fetch(`${API_BASE}/api/sync/resolve`, {
+    method: 'POST',
+    headers: authHeaders(apiKey),
+    body: JSON.stringify({ fileId, resolution, localContent, deviceId, deviceName }),
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Resolve failed (HTTP ${res.status})`)
+  }
+
+  return res.json()
+}
