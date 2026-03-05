@@ -1,6 +1,6 @@
 {
   "name": "@piut/cli",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Configure your AI tools to use pıut personal context",
   "type": "module",
   "bin": {
