@@ -1,3 +1,8 @@
+---
+name: piut
+description: Persistent personal context for AI — remember who users are, how they work, and what they care about across every conversation.
+---
+
 # pıut Context Skill
 
 You have access to a pıut context — a persistent personal context MCP server for this user. Use it whenever you need to:
