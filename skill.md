@@ -40,6 +40,38 @@ The context has 5 sections. Each stores a different type of personal context:
 
 **The `soul` section is special.** It contains directives for you — the AI. Read it and follow its instructions on tone, behavior, and guardrails.
 
+## Multiple Contexts
+
+Pro users can create up to 5 independent MCP servers — each with its own brain, slug, and API key. Use this for per-project context isolation:
+
+- **Personal** (`johndoe`) — default context for everyday AI use
+- **Work** (`johndoe-work`) — work-specific context for Cursor/Claude Code
+- **Client A** (`client-a`) — isolated context for a consulting engagement
+
+Each server is fully independent: separate sections, separate API keys, separate publish state.
+
+## How pıut works with CLAUDE.md
+
+pıut complements per-repo context files (CLAUDE.md, .cursorrules, etc.) — it does not replace them.
+
+| | CLAUDE.md / .cursorrules | pıut |
+|---|---|---|
+| **Scope** | Per-repo project rules | Personal context across all tools |
+| **Contains** | Build instructions, coding conventions | Who you are, how you think, what matters to you |
+| **Maintained by** | The team / project | You (the individual) |
+| **Available in** | That repo only | Every AI tool you connect |
+
+**Best practice:** Keep project-specific instructions in CLAUDE.md. Keep personal context in pıut. Reference `skill.md` in your CLAUDE.md to teach Claude Code how to use your pıut tools.
+
+## Security & Data
+
+- Brain content encrypted at rest with **AES-256-GCM** (per-user encryption keys)
+- Encryption keys stored server-side, never exposed to API clients
+- All connections over HTTPS (HSTS enforced)
+- **Draft/Published model:** Dashboard edits are drafts until you publish. MCP write tools update published content immediately.
+- **Export:** Download your full brain as JSON or Markdown from the dashboard at any time.
+- Data stored in PostgreSQL (Supabase) with row-level security.
+
 ## Tools
 
 ### get_context
