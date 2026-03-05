@@ -7,7 +7,7 @@ pıut is a personal context service that works via [MCP (Model Context Protocol)
 ## Quick Start
 
 ```bash
-npx piut
+npx @piut/cli
 ```
 
 That's it. The CLI auto-detects your AI tools and configures them.
@@ -39,17 +39,17 @@ See [piut.com/docs](https://piut.com/docs#add-to-ai) for setup guides for 14+ AI
 Install globally or run with `npx`:
 
 ```bash
-npx piut              # Auto-detect and configure AI tools
-npx piut status       # Show which tools are connected
-npx piut remove       # Remove pıut from selected tools
+npx @piut/cli              # Auto-detect and configure AI tools
+npx @piut/cli status       # Show which tools are connected
+npx @piut/cli remove       # Remove pıut from selected tools
 ```
 
 **Options:**
 
 ```bash
-npx piut --key pb_... # Pass API key non-interactively
-npx piut --tool cursor # Configure a single tool
-npx piut --skip-skill  # Skip skill.md file placement
+npx @piut/cli --key pb_... # Pass API key non-interactively
+npx @piut/cli --tool cursor # Configure a single tool
+npx @piut/cli --skip-skill  # Skip skill.md file placement
 ```
 
 **Supported tools:** Claude Code, Claude Desktop, Cursor, Windsurf, GitHub Copilot, Amazon Q, Zed
@@ -57,7 +57,7 @@ npx piut --skip-skill  # Skip skill.md file placement
 ## How It Works
 
 1. **Build your context** — Answer 5 questions or import existing files from your AI tools
-2. **Connect your tools** — Run `npx piut` or add one config, and every connected AI knows your context
+2. **Connect your tools** — Run `npx @piut/cli` or add one config, and every connected AI knows your context
 3. **Stay in sync** — Update your context once, and it's reflected everywhere
 
 Your context is organized into 5 sections:
@@ -91,7 +91,7 @@ pıut provides 6 tools via MCP:
 | `get_context` | Read all 5 context sections |
 | `get_section` | Read a specific section |
 | `search_brain` | Search across all sections |
-| `add_memory` | Append content to a section |
+| `append_brain` | Append content to a section |
 | `update_brain` | AI-powered smart update across sections |
 | `prompt_brain` | Natural language command (edit, delete, reorganize) |
 

@@ -8,7 +8,7 @@ const program = new Command()
 program
   .name('piut')
   .description('Configure your AI tools to use p\u0131ut personal context')
-  .version('1.0.0')
+  .version('1.0.1')
 
 program
   .command('setup', { isDefault: true })
