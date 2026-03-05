@@ -1,9 +1,9 @@
 import type { ValidateResponse } from '../types.js'
 
-const VALIDATE_URL = 'https://piut.com/api/cli/validate'
+const API_BASE = process.env.PIUT_API_BASE || 'https://piut.com'
 
 export async function validateKey(key: string): Promise<ValidateResponse> {
-  const res = await fetch(VALIDATE_URL, {
+  const res = await fetch(`${API_BASE}/api/cli/validate`, {
     headers: { Authorization: `Bearer ${key}` },
   })
 

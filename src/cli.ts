@@ -15,6 +15,7 @@ program
   .description('Auto-detect and configure AI tools')
   .option('-k, --key <key>', 'API key (prompts interactively if not provided)')
   .option('-t, --tool <id>', 'Configure a single tool (claude-code, cursor, windsurf, etc.)')
+  .option('-y, --yes', 'Skip interactive prompts (auto-select all detected tools)')
   .option('--project', 'Prefer project-local config files')
   .option('--skip-skill', 'Skip skill.md file placement')
   .action(setupCommand)

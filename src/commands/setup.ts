@@ -14,6 +14,7 @@ import type { DetectedTool } from '../types.js'
 interface SetupOptions {
   key?: string
   tool?: string
+  yes?: boolean
   project?: boolean
   skipSkill?: boolean
 }
@@ -24,8 +25,12 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
   // 1. Get API key
   let apiKey = options.key
   if (!apiKey) {
+    if (options.yes) {
+      console.log(chalk.red('  ✗ --key is required when using --yes'))
+      process.exit(1)
+    }
     apiKey = await password({
-      message: 'Enter your p\u0131ut API key:',
+      message: 'Enter your pıut API key:',
       mask: '*',
       validate: (v) => v.startsWith('pb_') || 'Key must start with pb_',
     })
@@ -37,13 +42,13 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
   try {
     validationResult = await validateKey(apiKey)
   } catch (err: unknown) {
-    console.log(chalk.red(`  \u2717 ${(err as Error).message}`))
+    console.log(chalk.red(`  ✗ ${(err as Error).message}`))
     console.log(dim('  Get a key at https://piut.com/dashboard/keys'))
     process.exit(1)
   }
 
   const { slug, displayName } = validationResult
-  console.log(success(`  \u2714 Authenticated as ${displayName} (${slug})`))
+  console.log(success(`  ✔ Authenticated as ${displayName} (${slug})`))
   console.log()
 
   // 3. Detect installed tools
@@ -80,23 +85,35 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     return
   }
 
-  // 4. Show detected tools, let user select
-  const choices = detected.map(d => ({
-    name: d.alreadyConfigured
-      ? `${d.tool.name} ${dim('(already configured)')}`
-      : d.tool.name,
-    value: d,
-    checked: !d.alreadyConfigured,
-  }))
+  // 4. Select tools to configure
+  let selected: DetectedTool[]
 
-  const selected = await checkbox({
-    message: 'Select tools to configure:',
-    choices,
-  })
+  if (options.yes) {
+    // Auto-select all unconfigured tools
+    selected = detected.filter(d => !d.alreadyConfigured)
+    if (selected.length === 0) {
+      console.log(dim('  All detected tools are already configured.'))
+      console.log()
+      return
+    }
+  } else {
+    const choices = detected.map(d => ({
+      name: d.alreadyConfigured
+        ? `${d.tool.name} ${dim('(already configured)')}`
+        : d.tool.name,
+      value: d,
+      checked: !d.alreadyConfigured,
+    }))
 
-  if (selected.length === 0) {
-    console.log(dim('  No tools selected.'))
-    return
+    selected = await checkbox({
+      message: 'Select tools to configure:',
+      choices,
+    })
+
+    if (selected.length === 0) {
+      console.log(dim('  No tools selected.'))
+      return
+    }
   }
 
   // 5. Configure each selected tool
@@ -108,8 +125,12 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     const { tool, configPath, alreadyConfigured } = det
 
     if (alreadyConfigured) {
+      if (options.yes) {
+        skipped.push(tool.name)
+        continue
+      }
       const update = await confirm({
-        message: `p\u0131ut is already configured in ${tool.name}. Update it?`,
+        message: `pıut is already configured in ${tool.name}. Update it?`,
         default: true,
       })
       if (!update) {
@@ -123,7 +144,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
       try {
         execSync(tool.quickCommand(slug, apiKey), { stdio: 'pipe' })
         configured.push(tool.name)
-        toolLine(tool.name, success('configured via CLI'), '\u2714')
+        toolLine(tool.name, success('configured via CLI'), '✔')
         continue
       } catch {
         console.log(dim('  Claude CLI command failed, using config file...'))
@@ -134,18 +155,18 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     const serverConfig = tool.generateConfig(slug, apiKey)
     mergeConfig(configPath, tool.configKey, serverConfig)
     configured.push(tool.name)
-    toolLine(tool.name, success('configured'), '\u2714')
+    toolLine(tool.name, success('configured'), '✔')
   }
 
   // 6. Skill file placement
   if (!options.skipSkill && configured.length > 0) {
-    console.log()
-    const addSkill = await confirm({
-      message: 'Add skill.md reference to rules files? (teaches AI how to use p\u0131ut)',
+    const addSkill = options.yes ? true : await confirm({
+      message: 'Add skill.md reference to rules files? (teaches AI how to use pıut)',
       default: true,
     })
 
     if (addSkill) {
+      console.log()
       for (const det of selected) {
         if (!det.tool.skillFilePath) continue
         if (!configured.includes(det.tool.name)) continue
