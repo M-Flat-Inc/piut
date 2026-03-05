@@ -104,7 +104,7 @@ Example response text:
 [memory:3] Link: intro to transformers — arxiv.org/abs/1706.03762
 ```
 
-### add_memory
+### append_brain
 
 Append content to a section. Direct concatenation, no AI processing.
 
@@ -121,7 +121,7 @@ Use for quick facts, links, or notes. Content is appended as-is. Writes take eff
   "id": 4,
   "method": "tools/call",
   "params": {
-    "name": "add_memory",
+    "name": "append_brain",
     "arguments": {
       "section": "memory",
       "content": "Recommended book: Thinking, Fast and Slow by Daniel Kahneman"
@@ -270,7 +270,7 @@ Common tool errors: invalid section name, empty content, token limit exceeded on
 
 1. **Always call `get_context` first.** Context changes between sessions — never rely on cached context.
 2. **Read and follow `soul`.** It is the user's behavioral configuration for AI. Respect its directives on tone, guardrails, and priorities.
-3. **Use `add_memory` for quick facts.** Use `update_brain` for context that needs intelligent organization across sections.
+3. **Use `append_brain` for quick facts.** Use `update_brain` for context that needs intelligent organization across sections.
 4. **Use `prompt_brain` for deletions and edits.** It can remove outdated info, reorganize, or make targeted changes.
 5. **Write to the correct section.** New project? `projects`. Preference change? `about`. Behavioral directive? `soul`. Bookmark or note? `memory`.
 6. **Be specific and factual when writing.** Context persists across all of the user's AI tools — vague entries are unhelpful.
