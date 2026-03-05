@@ -20,7 +20,8 @@ Replace `{{slug}}` with the user's MCP server slug and `{{key}}` with their cont
 ## Connection
 
 - **Endpoint:** `https://piut.com/api/mcp/{{slug}}`
-- **Auth header:** `Authorization: Bearer {{key}}` (keys start with `pb_`)
+- **Auth (URL):** `https://piut.com/api/mcp/{{slug}}?key={{key}}` (key in query param)
+- **Auth (header):** `Authorization: Bearer {{key}}` (keys start with `pb_`)
 - **Protocol:** JSON-RPC 2.0 (MCP)
 - **Methods:** `initialize`, `tools/list`, `tools/call`, `ping`
 
