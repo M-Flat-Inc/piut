@@ -1,6 +1,6 @@
 ---
 name: piut
-description: Persistent personal context for AI — remember who users are, how they work, and what they care about across every conversation.
+description: Build, base, and backup your AI brain — persistent personal context MCP server with cloud backup and version history.
 ---
 
 # pıut Context Skill
