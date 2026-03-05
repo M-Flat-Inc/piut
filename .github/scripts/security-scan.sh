@@ -83,7 +83,7 @@ scan "Reference to .env.local"         '\.env\.local'
 # ==============================================================================
 echo "--- Checking for internal architecture leaks ---"
 
-scan "Internal source path (src/)"     'src/(app|components|lib|middleware)/'
+scan "sbaas import alias"              "from ['\"]@/"
 scan "Internal docs reference"         'docs/(ARCHITECTURE|API_ROUTES|COMPONENTS|LIB)\.md'
 scan "Database table with schema"      'public\.(users|brains|subscriptions|encryption_keys|profiles|brain_sections)'
 scan "Internal file path"              '/Users/brian/'
