@@ -9,8 +9,8 @@ const program = new Command()
 
 program
   .name('piut')
-  .description('Configure your AI tools to use p\u0131ut personal context')
-  .version('1.0.2')
+  .description('Automatic backup + hosting of all your agent configs across every machine. Version history. Restore any time. One command to set up.')
+  .version('1.1.0')
 
 program
   .command('setup', { isDefault: true })

@@ -1,8 +1,12 @@
-# pıut
+# p&#x131;ut
 
-**Give every AI tool persistent memory about you.**
+**Your AI context, everywhere. Your config files, backed up.**
 
-pıut is a personal context service that works via [MCP (Model Context Protocol)](https://modelcontextprotocol.io). Connect once, and every AI tool you use — Claude, ChatGPT, Cursor, Copilot, and more — knows who you are, what you're working on, and how you like to work.
+p&#x131;ut does three things that build on each other:
+
+1. **Host your brain** — Centralized personal context as an MCP server. Connect once, and every AI tool you use knows who you are, how you work, and what matters to you.
+2. **Keep it updated** — 6 MCP tools let your AI read, write, search, and organize your context automatically. Add a skill reference and it happens without you lifting a finger.
+3. **Back up your files** — Cloud backup of all your agent config files (CLAUDE.md, .cursorrules, AGENTS.md, etc.) with version history, restore, and cross-machine sync.
 
 ## Quick Start
 
@@ -10,7 +14,10 @@ pıut is a personal context service that works via [MCP (Model Context Protocol)
 npx @piut/cli
 ```
 
-That's it. The CLI auto-detects your AI tools and configures them.
+The CLI does everything in one interactive flow:
+- Configures your AI tools with your MCP server
+- Adds skill.md references to your rules files
+- Scans and backs up your agent config files to the cloud
 
 Or set up manually:
 
@@ -39,9 +46,19 @@ See [piut.com/docs](https://piut.com/docs#add-to-ai) for setup guides for 14+ AI
 Install globally or run with `npx`:
 
 ```bash
-npx @piut/cli              # Auto-detect and configure AI tools
+# Setup & Configuration
+npx @piut/cli              # Interactive setup: MCP + skill.md + cloud backup
 npx @piut/cli status       # Show which tools are connected
 npx @piut/cli remove       # Remove pıut from selected tools
+
+# Cloud Backup
+npx @piut/cli sync         # Show backup status for current workspace
+npx @piut/cli sync --install  # Scan workspace, detect files, upload to cloud
+npx @piut/cli sync --push  # Push local changes to cloud
+npx @piut/cli sync --pull  # Pull cloud changes to local files
+npx @piut/cli sync --history   # Show version history for a file
+npx @piut/cli sync --diff  # Show diff between local and cloud
+npx @piut/cli sync --restore   # Restore files from cloud backup
 ```
 
 **Options:**
@@ -50,17 +67,16 @@ npx @piut/cli remove       # Remove pıut from selected tools
 npx @piut/cli --key pb_... # Pass API key non-interactively
 npx @piut/cli --tool cursor # Configure a single tool
 npx @piut/cli --skip-skill  # Skip skill.md file placement
+npx @piut/cli sync --install --yes  # Non-interactive backup setup
 ```
 
 **Supported tools:** Claude Code, Claude Desktop, Cursor, Windsurf, GitHub Copilot, Amazon Q, Zed
 
-## How It Works
+## The Three Features
 
-1. **Build your context** — Answer 5 questions or import existing files from your AI tools
-2. **Connect your tools** — Run `npx @piut/cli` or add one config, and every connected AI knows your context
-3. **Stay in sync** — Update your context once, and it's reflected everywhere
+### 1. Host Your Brain (MCP Server)
 
-Your context is organized into 5 sections:
+Your brain is organized into 5 sections, accessible from every AI tool via MCP:
 
 | Section | What it stores |
 |---------|---------------|
@@ -70,21 +86,9 @@ Your context is organized into 5 sections:
 | **Projects** | Active, time-bound work with goals and deadlines |
 | **Memory** | Bookmarks, links, ideas, notes, reference material |
 
-## Documentation
+### 2. Keep It Updated (MCP Tools + Skill)
 
-| Document | Description |
-|----------|-------------|
-| [**skill.md**](skill.md) | AI skill file — MCP tools, rate limits, error codes |
-| [**Add to your AI**](https://piut.com/docs#add-to-ai) | Setup guides for Claude, ChatGPT, Cursor, Copilot, and more |
-| [**API Reference**](https://piut.com/docs#api-examples) | Code examples in cURL, Python, Node.js, Go, and Ruby |
-| [**Rate Limits**](https://piut.com/docs#limits) | Limits by plan, error codes, and response headers |
-| [**Context Files**](https://piut.com/docs#context-files) | Where to find your existing context in 14 AI platforms |
-
-All documentation is maintained at [piut.com/docs](https://piut.com/docs) — the interactive version with credential auto-fill and setup guides.
-
-## MCP Tools
-
-pıut provides 6 tools via MCP:
+6 tools let your AI read and write your brain:
 
 | Tool | Purpose |
 |------|---------|
@@ -95,7 +99,36 @@ pıut provides 6 tools via MCP:
 | `update_brain` | AI-powered smart update across sections |
 | `prompt_brain` | Natural language command (edit, delete, reorganize) |
 
-Full tool documentation: [skill.md](skill.md)
+Add the [skill reference](skill.md) to your rules file and your AI uses these tools automatically.
+
+### 3. Back Up Your Files (Cloud Backup)
+
+The CLI scans your workspace for agent config files and backs them up to the cloud:
+
+| File | Tool |
+|------|------|
+| `CLAUDE.md` | Claude Code |
+| `AGENTS.md` | Multi-agent |
+| `.cursorrules` | Cursor |
+| `.windsurfrules` | Windsurf |
+| `copilot-instructions.md` | GitHub Copilot |
+| `MEMORY.md` | Claude Code |
+| `SOUL.md` | OpenClaw |
+| `rules/*.md` | Various |
+
+Files are encrypted at rest (AES-256-GCM), versioned, and syncable across machines.
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [**skill.md**](skill.md) | AI skill file — MCP tools, rate limits, error codes |
+| [**Add to your AI**](https://piut.com/docs#add-to-ai) | Setup guides for Claude, ChatGPT, Cursor, Copilot, and more |
+| [**API Reference**](https://piut.com/docs#api-examples) | Code examples in cURL, Python, Node.js, Go, and Ruby |
+| [**Cloud Backup**](https://piut.com/docs#cloud-backup) | Cloud backup setup, commands, and sync workflow |
+| [**Rate Limits**](https://piut.com/docs#limits) | Limits by plan, error codes, and response headers |
+
+All documentation is maintained at [piut.com/docs](https://piut.com/docs) — the interactive version with credential auto-fill and setup guides.
 
 ## Links
 

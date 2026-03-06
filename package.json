@@ -1,7 +1,7 @@
 {
   "name": "@piut/cli",
-  "version": "1.0.2",
-  "description": "Configure your AI tools to use pıut personal context",
+  "version": "1.1.0",
+  "description": "Automatic backup + hosting of all your agent configs across every machine. Version history. Restore any time. One command to set up.",
   "type": "module",
   "bin": {
     "piut": "dist/cli.js"
@@ -25,7 +25,11 @@
     "claude",
     "cursor",
     "copilot",
-    "windsurf"
+    "windsurf",
+    "backup",
+    "sync",
+    "cloud",
+    "agent-config"
   ],
   "author": "M-Flat Inc",
   "license": "MIT",
