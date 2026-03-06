@@ -11,7 +11,8 @@ p&#x131;ut does three things that build on each other:
 ## Quick Start
 
 ```bash
-npx @piut/cli
+npm install -g @piut/cli
+piut
 ```
 
 The CLI does everything in one interactive flow:
@@ -43,32 +44,36 @@ See [piut.com/docs](https://piut.com/docs#add-to-ai) for setup guides for 14+ AI
 
 ## CLI
 
-Install globally or run with `npx`:
+Install globally, then use the `piut` command:
 
 ```bash
+npm install -g @piut/cli
+
 # Setup & Configuration
-npx @piut/cli              # Interactive setup: MCP + skill.md + cloud backup
-npx @piut/cli status       # Show which tools are connected
-npx @piut/cli remove       # Remove pıut from selected tools
+piut                       # Interactive setup: MCP + skill.md + cloud backup
+piut status                # Show which tools are connected
+piut remove                # Remove pıut from selected tools
 
 # Cloud Backup
-npx @piut/cli sync         # Show backup status for current workspace
-npx @piut/cli sync --install  # Scan workspace, detect files, upload to cloud
-npx @piut/cli sync --push  # Push local changes to cloud
-npx @piut/cli sync --pull  # Pull cloud changes to local files
-npx @piut/cli sync --history   # Show version history for a file
-npx @piut/cli sync --diff  # Show diff between local and cloud
-npx @piut/cli sync --restore   # Restore files from cloud backup
+piut sync                  # Show backup status for current workspace
+piut sync --install        # Scan workspace, detect files, upload to cloud
+piut sync --push           # Push local changes to cloud
+piut sync --pull           # Pull cloud changes to local files
+piut sync --history        # Show version history for a file
+piut sync --diff           # Show diff between local and cloud
+piut sync --restore        # Restore files from cloud backup
 ```
 
 **Options:**
 
 ```bash
-npx @piut/cli --key pb_... # Pass API key non-interactively
-npx @piut/cli --tool cursor # Configure a single tool
-npx @piut/cli --skip-skill  # Skip skill.md file placement
-npx @piut/cli sync --install --yes  # Non-interactive backup setup
+piut --key pb_...          # Pass API key non-interactively
+piut --tool cursor         # Configure a single tool
+piut --skip-skill          # Skip skill.md file placement
+piut sync --install --yes  # Non-interactive backup setup
 ```
+
+You can also use `npx @piut/cli` without installing globally.
 
 **Supported tools:** Claude Code, Claude Desktop, Cursor, Windsurf, GitHub Copilot, Amazon Q, Zed
 
