@@ -2,7 +2,9 @@
 # ==============================================================================
 # Security scan for the public piut docs repo.
 #
-# Scans ALL tracked files (excluding this script and CI config) for secrets,
+# Scans ALL tracked files (excluding CI scripts and the sensitive-guard
+# library + its tests, which contain detection patterns and fake test data)
+# for secrets,
 # credentials, internal architecture details, and other sensitive data that
 # must never appear in a public repo.
 #
@@ -18,7 +20,8 @@ echo "=== piut Public Repo Security Scan ==="
 echo ""
 
 # --- Helper -------------------------------------------------------------------
-# Scans all tracked files except CI scripts (which contain the patterns).
+# Scans all tracked files except CI scripts and the sensitive-guard module
+# (which contain detection patterns and fake test data, not real secrets).
 scan() {
   local label="$1"
   local pattern="$2"
@@ -27,6 +30,8 @@ scan() {
   matches=$(git ls-files -z \
     | grep -zv '\.github/scripts/security-scan\.sh' \
     | grep -zv '\.github/workflows/security-scan\.yml' \
+    | grep -zv 'src/lib/sensitive-guard\.ts' \
+    | grep -zv '__tests__/sensitive-guard\.test\.ts' \
     | xargs -0 grep -rlE "$pattern" 2>/dev/null || true)
 
   if [ -n "$matches" ]; then
