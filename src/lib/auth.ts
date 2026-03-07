@@ -28,7 +28,10 @@ export async function resolveApiKey(keyOption?: string): Promise<string> {
     process.exit(1)
   }
 
-  console.log(success(`  ✓ Connected as ${result.displayName} (${result.slug})`))
+  const label = result.slug
+    ? `${result.displayName} (${result.slug})`
+    : result.displayName
+  console.log(success(`  ✓ Connected as ${label}`))
 
   // Save key for future use
   updateStore({ apiKey })
@@ -59,7 +62,10 @@ export async function resolveApiKeyWithResult(keyOption?: string) {
     process.exit(1)
   }
 
-  console.log(success(`  ✓ Connected as ${result.displayName} (${result.slug})`))
+  const label = result.slug
+    ? `${result.displayName} (${result.slug})`
+    : result.displayName
+  console.log(success(`  ✓ Connected as ${label}`))
   updateStore({ apiKey })
 
   return { apiKey, ...result }

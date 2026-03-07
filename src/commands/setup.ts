@@ -47,9 +47,24 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     process.exit(1)
   }
 
-  const { slug, displayName } = validationResult
-  console.log(success(`  ✔ Authenticated as ${displayName} (${slug})`))
+  const { slug, displayName, status } = validationResult
+  console.log(success(`  ✔ Authenticated as ${displayName}${slug ? ` (${slug})` : ''}`))
   console.log()
+
+  // 2b. Check brain status — setup requires a published brain
+  if (status === 'no_brain') {
+    console.log(warning('  You haven\u2019t built a brain yet.'))
+    console.log(dim('  Run ') + brand('piut build') + dim(' first, then ') + brand('piut deploy') + dim(' to publish it.'))
+    console.log()
+    return
+  }
+
+  if (status === 'unpublished') {
+    console.log(warning('  Your brain is built but not deployed yet.'))
+    console.log(dim('  Run ') + brand('piut deploy') + dim(' to publish your MCP server, then re-run setup.'))
+    console.log()
+    return
+  }
 
   // 3. Detect installed tools
   const detected: DetectedTool[] = []

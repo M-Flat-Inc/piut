@@ -1,7 +1,7 @@
 import { confirm } from '@inquirer/prompts'
 import chalk from 'chalk'
 import { publishServer } from '../lib/api.js'
-import { banner, brand, success, dim } from '../lib/ui.js'
+import { banner, brand, success, dim, warning } from '../lib/ui.js'
 import { resolveApiKeyWithResult } from '../lib/auth.js'
 
 interface DeployOptions {
@@ -12,7 +12,15 @@ interface DeployOptions {
 export async function deployCommand(options: DeployOptions): Promise<void> {
   banner()
 
-  const { apiKey, slug, serverUrl } = await resolveApiKeyWithResult(options.key)
+  const { apiKey, slug, serverUrl, status } = await resolveApiKeyWithResult(options.key)
+
+  if (status === 'no_brain') {
+    console.log()
+    console.log(warning('  You haven\u2019t built a brain yet.'))
+    console.log(dim('  Run ') + brand('piut build') + dim(' first to create your brain, then deploy.'))
+    console.log()
+    return
+  }
 
   console.log()
   console.log(dim('  Your brain will be published as an MCP server at:'))

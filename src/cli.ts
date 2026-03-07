@@ -9,7 +9,7 @@ import { disconnectCommand } from './commands/disconnect.js'
 import { interactiveMenu } from './commands/interactive.js'
 import { checkForUpdate } from './lib/update-check.js'
 
-const VERSION = '3.0.0'
+const VERSION = '3.1.0'
 
 const program = new Command()
 

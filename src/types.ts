@@ -25,11 +25,14 @@ export interface DetectedTool {
   alreadyConfigured: boolean
 }
 
+export type ValidateStatus = 'active' | 'unpublished' | 'no_brain'
+
 export interface ValidateResponse {
   slug: string
   displayName: string
   serverUrl: string
   planType: string
+  status: ValidateStatus
   _contractVersion: string
 }
 
