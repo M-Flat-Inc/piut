@@ -6,7 +6,7 @@ import chalk from 'chalk'
 import { validateKey, pingMcp, verifyMcpEndpoint } from '../lib/api.js'
 import { TOOLS } from '../lib/tools.js'
 import { resolveConfigPaths, expandPath } from '../lib/paths.js'
-import { mergeConfig, isPiutConfigured, getPiutConfig, extractKeyFromConfig } from '../lib/config.js'
+import { mergeConfig, isPiutConfigured, getPiutConfig, extractKeyFromConfig, extractSlugFromConfig } from '../lib/config.js'
 import { placeSkillFile } from '../lib/skill.js'
 import { writePiutConfig, writePiutSkill, ensureGitignored } from '../lib/piut-dir.js'
 import { banner, brand, success, warning, dim, toolLine } from '../lib/ui.js'
@@ -74,6 +74,8 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
 
   for (const tool of TOOLS) {
     if (toolFilter && tool.id !== toolFilter) continue
+    // Skip skill-only tools in setup — they don't have MCP config files
+    if (tool.skillOnly) continue
 
     const paths = resolveConfigPaths(tool.configPaths)
 
@@ -83,15 +85,19 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
       const parentExists = fs.existsSync(path.dirname(configPath))
 
       if (exists || parentExists) {
-        const configured = exists && isPiutConfigured(configPath, tool.configKey)
+        const configured = exists && !!tool.configKey && isPiutConfigured(configPath, tool.configKey)
 
-        // Check if existing config has a different (stale) key
+        // Check if existing config has a different (stale) key or wrong slug
         let staleKey = false
-        if (configured) {
+        if (configured && tool.configKey) {
           const piutConfig = getPiutConfig(configPath, tool.configKey)
           if (piutConfig) {
             const existingKey = extractKeyFromConfig(piutConfig)
             if (existingKey && existingKey !== apiKey) {
+              staleKey = true
+            }
+            const existingSlug = extractSlugFromConfig(piutConfig)
+            if (existingSlug && existingSlug !== slug) {
               staleKey = true
             }
           }
@@ -111,7 +117,6 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
 
   if (detected.length === 0) {
     console.log(warning('  No supported AI tools detected.'))
-    console.log(dim('  Supported: Claude Code, Claude Desktop, Cursor, Windsurf, GitHub Copilot, Amazon Q, Zed'))
     console.log(dim('  See https://piut.com/docs for manual setup.'))
     console.log()
     return
@@ -180,7 +185,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
         execSync(tool.quickCommand(slug, apiKey), { stdio: 'pipe' })
         // Verify the config was actually written
         const claudeJson = expandPath('~/.claude.json')
-        const written = getPiutConfig(claudeJson, tool.configKey)
+        const written = tool.configKey ? getPiutConfig(claudeJson, tool.configKey) : null
         if (written) {
           quickSuccess = true
           configured.push(tool.name)
@@ -190,7 +195,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
         // Quick command claimed success but config not found — try with explicit scope
         try {
           execSync(tool.quickCommand(slug, apiKey) + ' --scope user', { stdio: 'pipe' })
-          const retryCheck = getPiutConfig(claudeJson, tool.configKey)
+          const retryCheck = tool.configKey ? getPiutConfig(claudeJson, tool.configKey) : null
           if (retryCheck) {
             quickSuccess = true
             configured.push(tool.name)
@@ -210,10 +215,12 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     }
 
     // Standard config file merge
-    const serverConfig = tool.generateConfig(slug, apiKey)
-    mergeConfig(configPath, tool.configKey, serverConfig)
-    configured.push(tool.name)
-    toolLine(tool.name, success('configured'), '✔')
+    if (tool.generateConfig && tool.configKey) {
+      const serverConfig = tool.generateConfig(slug, apiKey)
+      mergeConfig(configPath, tool.configKey, serverConfig)
+      configured.push(tool.name)
+      toolLine(tool.name, success('configured'), '✔')
+    }
   }
 
   // 6. Skill file placement
@@ -264,6 +271,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     // Verify each tool's config was written correctly
     for (const det of selected) {
       if (!configured.includes(det.tool.name)) continue
+      if (!det.tool.configKey) continue
       const piutConfig = getPiutConfig(det.configPath, det.tool.configKey)
       if (piutConfig) {
         toolLine(det.tool.name, success('config verified'), '✔')

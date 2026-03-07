@@ -12,9 +12,11 @@ export class CliError extends Error {
 export interface ToolDefinition {
   id: string
   name: string
-  /** JSON key that holds MCP servers (e.g., "mcpServers", "servers", "context_servers") */
-  configKey: string
-  /** Config file paths by platform */
+  /** JSON key that holds MCP servers (e.g., "mcpServers", "servers", "context_servers").
+   *  Omit for skill-only tools that don't have MCP config files. */
+  configKey?: string
+  /** Config file paths by platform. Also used for detection — if the parent directory
+   *  of any path exists, the tool is considered "installed". */
   configPaths: {
     darwin?: string[]
     win32?: string[]
@@ -25,8 +27,12 @@ export interface ToolDefinition {
   skillFilePath?: string
   /** Quick command alternative (e.g., claude mcp add-json) */
   quickCommand?: (slug: string, key: string) => string
-  /** Generate the server config object for this tool */
-  generateConfig: (slug: string, key: string) => Record<string, unknown>
+  /** Generate the server config object for this tool.
+   *  Omit for skill-only tools — they'll be detected but MCP config won't be written. */
+  generateConfig?: (slug: string, key: string) => Record<string, unknown>
+  /** True if this tool can only be configured via skill files, not MCP config.
+   *  Shown with a "(skill only)" label in the UI. */
+  skillOnly?: boolean
 }
 
 export interface DetectedTool {
@@ -87,4 +93,40 @@ export interface ProjectInfo {
   hasCopilotInstructions: boolean
   hasConventionsMd: boolean
   hasZedRules: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Vault types
+// ---------------------------------------------------------------------------
+
+export interface VaultFile {
+  filename: string
+  extension: string
+  sizeBytes: number
+  summary: string | null
+  createdAt: string
+}
+
+export interface VaultListResponse {
+  files: VaultFile[]
+  usage: {
+    totalBytes: number
+    maxBytes: number
+    fileCount: number
+  }
+}
+
+export interface VaultUploadResponse {
+  filename: string
+  extension: string
+  sizeBytes: number
+  summary: string | null
+}
+
+export interface VaultReadResponse {
+  filename: string
+  extension: string
+  sizeBytes: number
+  summary: string | null
+  content: string
 }

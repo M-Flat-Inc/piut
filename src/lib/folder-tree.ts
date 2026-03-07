@@ -74,6 +74,7 @@ const SKIP_HOME_DIRS = new Set([
 /** Dot-directories to include in home listing (AI tool configs) */
 const INCLUDE_DOT_DIRS = new Set([
   '.claude', '.cursor', '.windsurf', '.openclaw', '.zed', '.github', '.amazonq',
+  '.gemini', '.mcporter', '.paperclip',
 ])
 
 /** Get default scan directories (home subdirs + cloud storage). */

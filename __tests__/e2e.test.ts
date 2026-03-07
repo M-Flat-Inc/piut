@@ -390,7 +390,7 @@ describe('setup command', () => {
     fs.writeFileSync(
       path.join(tmpHome, '.cursor', 'mcp.json'),
       JSON.stringify({
-        mcpServers: { 'piut-context': { url: 'https://piut.com/api/mcp/olduser' } },
+        mcpServers: { 'piut-context': { url: 'https://piut.com/api/mcp/testuser', headers: { Authorization: 'Bearer pb_valid_test_key' } } },
       })
     )
 
@@ -400,6 +400,28 @@ describe('setup command', () => {
     )
     expect(exitCode).toBe(0)
     expect(stdout).toContain('All detected tools are already configured')
+  })
+
+  it('detects stale slug and reconfigures in --yes mode', async () => {
+    fs.mkdirSync(path.join(tmpHome, '.cursor'), { recursive: true })
+    fs.writeFileSync(
+      path.join(tmpHome, '.cursor', 'mcp.json'),
+      JSON.stringify({
+        mcpServers: { 'piut-context': { url: 'https://piut.com/api/mcp/olduser', headers: { Authorization: 'Bearer pb_valid_test_key' } } },
+      })
+    )
+
+    const { stdout, exitCode } = await runAsync(
+      ['setup', '--key', 'pb_valid_test_key', '--tool', 'cursor', '--yes', '--skip-skill'],
+      { env: apiEnv() }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('configured')
+    // Verify the slug was updated
+    const config = JSON.parse(
+      fs.readFileSync(path.join(tmpHome, '.cursor', 'mcp.json'), 'utf-8')
+    )
+    expect(config.mcpServers['piut-context'].url).toContain('/api/mcp/testuser')
   })
 
   it('creates skill files when not using --skip-skill', async () => {

@@ -1,6 +1,6 @@
 import os from 'os'
 import crypto from 'crypto'
-import type { ValidateResponse, LoginResponse, BrainSections, BuildBrainInput } from '../types.js'
+import type { ValidateResponse, LoginResponse, BrainSections, BuildBrainInput, VaultListResponse, VaultUploadResponse, VaultReadResponse } from '../types.js'
 
 const API_BASE = process.env.PIUT_API_BASE || 'https://piut.com'
 
@@ -188,6 +188,9 @@ export async function pingMcp(
         Authorization: `Bearer ${key}`,
         'Content-Type': 'application/json',
         'User-Agent': `piut-cli (configured: ${toolName})`,
+        'X-Piut-Hostname': os.hostname(),
+        'X-Piut-Machine-Id': getMachineId(),
+        'X-Piut-Tool': toolName,
       },
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -251,12 +254,17 @@ export function getMachineId(): string {
   return crypto.createHash('sha256').update(hostname).digest('hex').slice(0, 16)
 }
 
+export function getHostname(): string {
+  return os.hostname()
+}
+
 export async function registerProject(
   key: string,
   project: {
     projectName: string
     projectPath: string
     machineId: string
+    hostname?: string
     toolsDetected: string[]
     configFiles: string[]
   },
@@ -372,4 +380,73 @@ export async function unpublishServer(key: string): Promise<{ published: boolean
   }
 
   return res.json()
+}
+
+// ---------------------------------------------------------------------------
+// Vault
+// ---------------------------------------------------------------------------
+
+export async function listVaultFiles(key: string): Promise<VaultListResponse> {
+  const res = await fetch(`${API_BASE}/api/cli/vault`, {
+    headers: { Authorization: `Bearer ${key}` },
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Failed to list vault files (HTTP ${res.status})`)
+  }
+
+  return res.json()
+}
+
+export async function uploadVaultFile(
+  key: string,
+  filename: string,
+  content: string,
+): Promise<VaultUploadResponse> {
+  const res = await fetch(`${API_BASE}/api/cli/vault/upload`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ filename, content }),
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Upload failed (HTTP ${res.status})`)
+  }
+
+  return res.json()
+}
+
+export async function readVaultFile(key: string, filename: string): Promise<VaultReadResponse> {
+  const encoded = encodeURIComponent(filename)
+  const res = await fetch(`${API_BASE}/api/cli/vault/${encoded}`, {
+    headers: { Authorization: `Bearer ${key}` },
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Failed to read vault file (HTTP ${res.status})`)
+  }
+
+  return res.json()
+}
+
+export async function deleteVaultFile(key: string, filename: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/cli/vault`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ filename }),
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Delete failed (HTTP ${res.status})`)
+  }
 }

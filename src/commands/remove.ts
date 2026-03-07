@@ -13,6 +13,7 @@ export async function removeCommand(): Promise<void> {
   const configured: { tool: (typeof TOOLS)[0]; configPath: string }[] = []
 
   for (const tool of TOOLS) {
+    if (!tool.configKey) continue // Skip skill-only tools
     const paths = resolveConfigPaths(tool.configPaths)
     for (const configPath of paths) {
       if (fs.existsSync(configPath) && isPiutConfigured(configPath, tool.configKey)) {
@@ -53,6 +54,7 @@ export async function removeCommand(): Promise<void> {
   console.log()
   const removedNames: string[] = []
   for (const { tool, configPath } of selected) {
+    if (!tool.configKey) continue
     const removed = removeFromConfig(configPath, tool.configKey)
     if (removed) {
       removedNames.push(tool.name)

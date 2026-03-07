@@ -102,6 +102,40 @@ export function extractKeyFromConfig(piutConfig: Record<string, unknown>): strin
   return null
 }
 
+/**
+ * Extract the MCP slug from a piut-context config object's URL.
+ * Handles all tool formats (url, serverUrl, httpUrl, settings.url, args array).
+ */
+export function extractSlugFromConfig(piutConfig: Record<string, unknown>): string | null {
+  const slugFromUrl = (u: unknown): string | null => {
+    if (typeof u !== 'string') return null
+    const m = u.match(/\/api\/mcp\/([^/?#]+)/)
+    return m ? m[1] : null
+  }
+
+  // Standard: { url: "https://piut.com/api/mcp/SLUG" }
+  const fromUrl = slugFromUrl(piutConfig.url) || slugFromUrl(piutConfig.serverUrl) || slugFromUrl(piutConfig.httpUrl)
+  if (fromUrl) return fromUrl
+
+  // Zed: { settings: { url: "..." } }
+  const settings = piutConfig.settings as Record<string, unknown> | undefined
+  if (settings) {
+    const fromSettings = slugFromUrl(settings.url)
+    if (fromSettings) return fromSettings
+  }
+
+  // Claude Desktop: { args: [..., "https://piut.com/api/mcp/SLUG", ...] }
+  const args = piutConfig.args as string[] | undefined
+  if (Array.isArray(args)) {
+    for (const arg of args) {
+      const fromArg = slugFromUrl(arg)
+      if (fromArg) return fromArg
+    }
+  }
+
+  return null
+}
+
 /** Remove piut-context from a config file. Returns true if found and removed. */
 export function removeFromConfig(filePath: string, configKey: string): boolean {
   const config = readConfig(filePath)

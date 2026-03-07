@@ -10,7 +10,7 @@ import { expandPath } from '../lib/paths.js'
 import { writePiutConfig, writePiutSkill, ensureGitignored } from '../lib/piut-dir.js'
 import { mergeConfig } from '../lib/config.js'
 import { TOOLS } from '../lib/tools.js'
-import { registerProject, getMachineId } from '../lib/api.js'
+import { registerProject, getMachineId, getHostname } from '../lib/api.js'
 import type { ProjectInfo } from '../types.js'
 
 interface ConnectOptions {
@@ -66,6 +66,18 @@ export const RULE_FILES: RuleFileConfig[] = [
     filePath: '.zed/rules.md',
     strategy: 'create',
     detect: (p) => p.hasZedRules || fs.existsSync(path.join(p.path, '.zed')),
+  },
+  {
+    tool: 'Gemini CLI',
+    filePath: 'GEMINI.md',
+    strategy: 'append',
+    detect: (p) => fs.existsSync(path.join(p.path, '.gemini')),
+  },
+  {
+    tool: 'Paperclip',
+    filePath: 'AGENTS.md',
+    strategy: 'append',
+    detect: (p) => fs.existsSync(path.join(p.path, '.paperclip')),
   },
 ]
 
@@ -306,6 +318,7 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
 
   // Register projects server-side (best-effort, non-blocking)
   const machineId = getMachineId()
+  const hostname = getHostname()
   for (const projectPath of selectedPaths) {
     const projectActions = byProject.get(projectPath) || []
     const projectName = path.basename(projectPath)
@@ -316,6 +329,7 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
       projectName,
       projectPath,
       machineId,
+      hostname,
       toolsDetected,
       configFiles: configFilesWritten,
     }).catch(() => {

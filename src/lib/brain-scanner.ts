@@ -52,6 +52,7 @@ const SKIP_DIRS = new Set([
 
 const SCAN_DOT_DIRS = new Set([
   '.claude', '.cursor', '.windsurf', '.github', '.zed', '.amazonq', '.vscode',
+  '.gemini', '.openclaw', '.mcporter', '.paperclip',
 ])
 
 function shouldSkipDir(name: string): boolean {
@@ -168,6 +169,8 @@ function collectConfigFiles(projects: ProjectInfo[], onProgress?: ProgressCallba
     path.join(home, '.claude', 'CLAUDE.md'),
     path.join(home, '.openclaw', 'workspace', 'SOUL.md'),
     path.join(home, '.openclaw', 'workspace', 'MEMORY.md'),
+    path.join(home, '.gemini', 'MEMORY.md'),
+    path.join(home, '.paperclip', 'IDENTITY.md'),
   ]
 
   for (const gp of globalPaths) {

@@ -23,6 +23,7 @@ const KNOWN_FILES = [
   '.github/instructions/*.instructions.md',
   'CONVENTIONS.md',
   '.amazonq/rules/*.md',
+  '.gemini/settings.json',
 ]
 
 /** Global file paths to scan (in home directory) */
@@ -33,6 +34,8 @@ const GLOBAL_FILES = [
   '~/.openclaw/workspace/MEMORY.md',
   '~/.openclaw/workspace/IDENTITY.md',
   '~/.config/agent/IDENTITY.md',
+  '~/.gemini/settings.json',
+  '~/.paperclip/config.json',
 ]
 
 export interface ScannedFile {
@@ -82,6 +85,9 @@ function toolCategory(toolId: string): string {
     'copilot': 'VS Code / Copilot',
     'amazon-q': 'Amazon Q',
     'zed': 'Zed',
+    'gemini-cli': 'Gemini CLI',
+    'openclaw': 'OpenClaw',
+    'paperclip': 'Paperclip',
   }
   return map[toolId] || toolId
 }
@@ -97,6 +103,9 @@ function categorizeFile(filePath: string): string {
   if (lower.endsWith('.rules') || lower.includes('.zed/')) return 'Zed'
   if (lower.includes('.clinerules')) return 'Cline'
   if (lower.includes('.openclaw/')) return 'OpenClaw'
+  if (lower.includes('.gemini/')) return 'Gemini CLI'
+  if (lower.includes('.paperclip/')) return 'Paperclip'
+  if (lower.includes('.mcporter/')) return 'OpenClaw'
   return 'Custom'
 }
 

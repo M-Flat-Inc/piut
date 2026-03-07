@@ -26,6 +26,8 @@ export const APPEND_FILES = [
   'CLAUDE.md',
   '.github/copilot-instructions.md',
   'CONVENTIONS.md',
+  'GEMINI.md',
+  'AGENTS.md',
 ]
 
 interface DisconnectAction {

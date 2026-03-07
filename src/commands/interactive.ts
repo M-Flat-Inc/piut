@@ -2,9 +2,8 @@ import { select, confirm, checkbox, Separator } from '@inquirer/prompts'
 import fs from 'fs'
 import path from 'path'
 import { exec } from 'child_process'
-import os from 'os'
 import chalk from 'chalk'
-import { validateKey, unpublishServer, pingMcp, getBrain, publishServer, deleteConnections, resyncBrain, registerProject, unregisterProject, getMachineId } from '../lib/api.js'
+import { validateKey, unpublishServer, pingMcp, getBrain, publishServer, deleteConnections, registerProject, unregisterProject, getMachineId, listVaultFiles, uploadVaultFile, deleteVaultFile } from '../lib/api.js'
 import { readStore, updateStore } from '../lib/store.js'
 import { promptLogin } from '../lib/auth.js'
 import { banner, brand, success, dim, warning, toolLine, Spinner } from '../lib/ui.js'
@@ -17,7 +16,7 @@ import { DEDICATED_FILES, APPEND_FILES, removePiutSection } from './disconnect.j
 import { TOOLS } from '../lib/tools.js'
 import { resolveConfigPaths } from '../lib/paths.js'
 import { isPiutConfigured, mergeConfig, removeFromConfig } from '../lib/config.js'
-import { scanForProjects, scanFolders, buildBrainInput } from '../lib/brain-scanner.js'
+import { scanForProjects } from '../lib/brain-scanner.js'
 import { writePiutConfig, writePiutSkill, ensureGitignored, hasPiutDir, removePiutDir } from '../lib/piut-dir.js'
 import { PROJECT_SKILL_SNIPPET } from '../lib/skill.js'
 import { CliError } from '../types.js'
@@ -129,10 +128,23 @@ export async function interactiveMenu(): Promise<void> {
         loop: false,
         choices: [
           {
-            name: hasBrain ? 'Resync Brain' : 'Build Brain',
-            value: 'build' as const,
-            description: hasBrain ? 'Rescan your files and merge updates into your brain' : 'Build your brain from your files',
+            name: 'My Brain',
+            value: 'view-brain' as const,
+            description: 'View all 5 brain sections',
+            disabled: !hasBrain && '(build brain first)',
           },
+          {
+            name: 'Build Brain',
+            value: 'build' as const,
+            description: hasBrain ? 'Rebuild your brain from your files' : 'Build your brain from your files',
+          },
+          {
+            name: 'Edit Brain',
+            value: 'edit-brain' as const,
+            description: 'Open piut.com to edit your brain',
+            disabled: !hasBrain && '(build brain first)',
+          },
+          new Separator(),
           {
             name: isDeployed ? 'Undeploy Brain' : 'Deploy Brain',
             value: 'deploy' as const,
@@ -155,23 +167,21 @@ export async function interactiveMenu(): Promise<void> {
           },
           new Separator(),
           {
-            name: 'Edit Brain',
-            value: 'edit-brain' as const,
-            description: 'Open piut.com to edit your brain',
-            disabled: !hasBrain && '(build brain first)',
+            name: 'View Files',
+            value: 'vault-view' as const,
+            description: 'List and manage files in your vault',
           },
           {
-            name: 'View Brain',
-            value: 'view-brain' as const,
-            description: 'View all 5 brain sections',
-            disabled: !hasBrain && '(build brain first)',
+            name: 'Upload Files',
+            value: 'vault-upload' as const,
+            description: 'Upload a file to your vault',
           },
+          new Separator(),
           {
             name: 'Status',
             value: 'status' as const,
             description: 'Show brain, deployment, and connected tools/projects',
           },
-          new Separator(),
           {
             name: 'Logout',
             value: 'logout' as const,
@@ -194,12 +204,14 @@ export async function interactiveMenu(): Promise<void> {
     // Wrap command dispatch in try/catch so errors always return to menu
     try {
       switch (action) {
+        case 'view-brain':
+          await handleViewBrain(apiKey)
+          break
         case 'build':
-          if (hasBrain) {
-            await handleResyncBrain(apiKey, currentValidation)
-          } else {
-            await buildCommand({ key: apiKey })
-          }
+          await buildCommand({ key: apiKey })
+          break
+        case 'edit-brain':
+          handleEditBrain()
           break
         case 'deploy':
           if (isDeployed) {
@@ -214,11 +226,11 @@ export async function interactiveMenu(): Promise<void> {
         case 'connect-projects':
           await handleManageProjects(apiKey, currentValidation)
           break
-        case 'edit-brain':
-          handleEditBrain()
+        case 'vault-view':
+          await handleVaultView(apiKey)
           break
-        case 'view-brain':
-          await handleViewBrain(apiKey)
+        case 'vault-upload':
+          await handleVaultUpload(apiKey)
           break
         case 'status':
           statusCommand()
@@ -294,7 +306,7 @@ async function handleConnectTools(apiKey: string, validation: ValidateResponse):
       const exists = fs.existsSync(configPath)
       const parentExists = fs.existsSync(path.dirname(configPath))
       if (exists || parentExists) {
-        const connected = exists && isPiutConfigured(configPath, tool.configKey)
+        const connected = exists && !!tool.configKey && isPiutConfigured(configPath, tool.configKey)
         detected.push({ tool, configPath, connected })
         break
       }
@@ -303,22 +315,35 @@ async function handleConnectTools(apiKey: string, validation: ValidateResponse):
 
   if (detected.length === 0) {
     console.log(warning('  No supported AI tools detected.'))
-    console.log(dim('  Supported: Claude Code, Claude Desktop, Cursor, Windsurf, GitHub Copilot, Amazon Q, Zed'))
     console.log()
     return
   }
 
-  const connectedCount = detected.filter(d => d.connected).length
-  const availableCount = detected.length - connectedCount
+  const mcpTools = detected.filter(d => !d.tool.skillOnly)
+  const skillOnlyTools = detected.filter(d => d.tool.skillOnly)
+
+  const connectedCount = mcpTools.filter(d => d.connected).length
+  const availableCount = mcpTools.length - connectedCount
   if (connectedCount > 0 || availableCount > 0) {
     const parts: string[] = []
     if (connectedCount > 0) parts.push(`${connectedCount} connected`)
     if (availableCount > 0) parts.push(`${availableCount} available`)
+    if (skillOnlyTools.length > 0) parts.push(`${skillOnlyTools.length} skill-only`)
     console.log(dim(`  ${parts.join(', ')}`))
   }
   console.log()
 
-  const choices = detected.map(d => ({
+  if (mcpTools.length === 0) {
+    console.log(dim('  Detected tools are skill-only (no MCP config to manage).'))
+    if (skillOnlyTools.length > 0) {
+      console.log(dim(`  Skill-only: ${skillOnlyTools.map(d => d.tool.name).join(', ')}`))
+    }
+    console.log(dim('  Use "Connect Projects" to add skill files to your projects.'))
+    console.log()
+    return
+  }
+
+  const choices = mcpTools.map(d => ({
     name: `${d.tool.name}${d.connected ? dim(' (connected)') : ''}`,
     value: d,
     checked: d.connected,
@@ -331,7 +356,7 @@ async function handleConnectTools(apiKey: string, validation: ValidateResponse):
 
   // Determine what changed
   const toConnect = selected.filter(s => !s.connected)
-  const toDisconnect = detected.filter(d => d.connected && !selected.includes(d))
+  const toDisconnect = mcpTools.filter(d => d.connected && !selected.includes(d))
 
   if (toConnect.length === 0 && toDisconnect.length === 0) {
     console.log(dim('  No changes.'))
@@ -343,19 +368,27 @@ async function handleConnectTools(apiKey: string, validation: ValidateResponse):
 
   // Connect new tools
   for (const { tool, configPath } of toConnect) {
-    const serverConfig = tool.generateConfig(slug, apiKey)
-    mergeConfig(configPath, tool.configKey, serverConfig)
-    toolLine(tool.name, success('connected'), '\u2714')
+    if (tool.generateConfig && tool.configKey) {
+      const serverConfig = tool.generateConfig(slug, apiKey)
+      mergeConfig(configPath, tool.configKey, serverConfig)
+      toolLine(tool.name, success('connected'), '\u2714')
+    }
   }
 
   // Disconnect removed tools
   const removedNames: string[] = []
   for (const { tool, configPath } of toDisconnect) {
+    if (!tool.configKey) continue
     const removed = removeFromConfig(configPath, tool.configKey)
     if (removed) {
       removedNames.push(tool.name)
       toolLine(tool.name, warning('disconnected'), '\u2714')
     }
+  }
+
+  // Show skill-only tools reminder
+  if (skillOnlyTools.length > 0) {
+    console.log(dim(`  Skill-only (use "Connect Projects"): ${skillOnlyTools.map(d => d.tool.name).join(', ')}`))
   }
 
   // Register tool connections (fire-and-forget)
@@ -539,115 +572,103 @@ function handleEditBrain(): void {
   console.log()
 }
 
+
 // ---------------------------------------------------------------------------
-// Resync Brain — scan filesystem + merge update via update_brain
+// File Vault — list, upload, delete from interactive menu
 // ---------------------------------------------------------------------------
 
-/** Format scan data into a text string suitable for update_brain */
-function formatScanContent(input: { summary: { folders: string[]; projects: { name: string; path: string; description: string }[]; configFiles: { name: string; content: string }[]; recentDocuments: { name: string; content: string }[]; personalDocuments?: { name: string; content: string; format: string }[] } }): string {
-  const { summary } = input
-  const parts: string[] = []
-
-  parts.push('The user has re-scanned their filesystem. Below is updated information about their projects, config files, and documents. Please merge this into the existing brain sections, preserving existing content and updating what has changed.')
-  parts.push('')
-
-  if (summary.folders.length > 0) {
-    parts.push(`## Folder Structure\n${summary.folders.join('\n')}`)
-  }
-
-  if (summary.projects.length > 0) {
-    const projectLines = summary.projects.map(p =>
-      `- **${p.name}** (${p.path})${p.description ? ` \u2014 ${p.description}` : ''}`
-    )
-    parts.push(`## Projects Found\n${projectLines.join('\n')}`)
-  }
-
-  // Budget per file (same logic as server-side)
-  const totalFiles = (summary.configFiles?.length || 0) + (summary.recentDocuments?.length || 0) + (summary.personalDocuments?.length || 0)
-  const fileLimit = totalFiles <= 10 ? 10_000 : totalFiles <= 30 ? 5_000 : totalFiles <= 60 ? 3_000 : 2_000
-
-  if (summary.configFiles.length > 0) {
-    const configBlocks = summary.configFiles.map(f =>
-      `### ${f.name}\n\`\`\`\n${f.content.slice(0, fileLimit)}\n\`\`\``
-    )
-    parts.push(`## AI Config Files\n${configBlocks.join('\n\n')}`)
-  }
-
-  if (summary.recentDocuments.length > 0) {
-    const docBlocks = summary.recentDocuments.map(f =>
-      `### ${f.name}\n${f.content.slice(0, fileLimit)}`
-    )
-    parts.push(`## Recent Documents\n${docBlocks.join('\n\n')}`)
-  }
-
-  if (summary.personalDocuments && summary.personalDocuments.length > 0) {
-    const docBlocks = summary.personalDocuments.map(f =>
-      `### ${f.name}\n${f.content.slice(0, fileLimit)}`
-    )
-    parts.push(`## Personal Documents\n${docBlocks.join('\n\n')}`)
-  }
-
-  let result = parts.join('\n\n')
-
-  // Cap at 400K chars (~100K tokens, matching update_brain limit)
-  if (result.length > 400_000) {
-    result = result.slice(0, 400_000)
-  }
-
-  return result
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-async function handleResyncBrain(apiKey: string, validation: ValidateResponse): Promise<void> {
-  if (!validation.serverUrl) {
-    console.log(warning('  Brain must be deployed before resyncing.'))
-    console.log(dim('  Run ') + brand('piut deploy') + dim(' first.'))
+async function handleVaultView(apiKey: string): Promise<void> {
+  const data = await listVaultFiles(apiKey)
+
+  if (data.files.length === 0) {
+    console.log(dim('  Vault is empty. Use "Upload Files" to add files.'))
     console.log()
     return
   }
 
-  const cwd = process.cwd()
-  const cwdDisplay = cwd.replace(os.homedir(), '~')
-
-  console.log(dim(`  Scanning ${cwdDisplay}...`))
-
-  // Scan filesystem (same as build)
-  const scanResult = await scanFolders([cwd])
-  const allFolderPaths = scanResult.folders.map(f => f.path)
-  const brainInput = buildBrainInput(scanResult, allFolderPaths)
-
-  const projCount = brainInput.summary.projects.length
-  const cfgCount = brainInput.summary.configFiles.length
-  const dcCount = (brainInput.summary.personalDocuments?.length || 0) + brainInput.summary.recentDocuments.length
-
-  console.log(success(`  Scanned: ${projCount} projects, ${cfgCount} config files, ${dcCount} docs`))
+  // Show files and usage
+  console.log()
+  for (const file of data.files) {
+    const size = dim(`(${formatSize(file.sizeBytes)})`)
+    console.log(`  ${file.filename}  ${size}`)
+    if (file.summary) console.log(dim(`    ${file.summary}`))
+  }
+  console.log()
+  console.log(dim(`  ${data.usage.fileCount} file(s), ${formatSize(data.usage.totalBytes)} / ${formatSize(data.usage.maxBytes)} used`))
   console.log()
 
-  if (projCount === 0 && cfgCount === 0) {
-    console.log(chalk.yellow('  No projects or config files found to resync from.'))
+  const action = await select({
+    message: 'Actions:',
+    choices: [
+      { name: 'Delete a file', value: 'delete' as const },
+      { name: 'Back', value: 'back' as const },
+    ],
+  })
+
+  if (action === 'back') return
+
+  if (action === 'delete') {
+    const fileChoices = data.files.map(f => ({
+      name: `${f.filename}  ${dim(`(${formatSize(f.sizeBytes)})`)}`,
+      value: f.filename,
+    }))
+
+    const filename = await select({
+      message: 'Which file to delete?',
+      choices: fileChoices,
+    })
+
+    const confirmed = await confirm({
+      message: `Delete "${filename}"? This cannot be undone.`,
+      default: false,
+    })
+
+    if (confirmed) {
+      try {
+        await deleteVaultFile(apiKey, filename)
+        console.log(success(`  Deleted ${filename}`))
+        console.log()
+      } catch (err: unknown) {
+        console.log(chalk.red(`  ${(err as Error).message}`))
+        console.log()
+      }
+    }
+  }
+}
+
+async function handleVaultUpload(apiKey: string): Promise<void> {
+  const { input } = await import('@inquirer/prompts')
+  const filePath = await input({ message: 'File path:' })
+  if (!filePath.trim()) return
+
+  const resolved = path.resolve(filePath)
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    console.log(chalk.red(`  File not found: ${filePath}`))
     console.log()
     return
   }
 
-  // Format scan data for update_brain
-  const content = formatScanContent(brainInput)
+  const filename = path.basename(resolved)
+  const content = fs.readFileSync(resolved, 'utf-8')
 
   const spinner = new Spinner()
-  spinner.start('Resyncing brain...')
-
+  spinner.start(`Uploading ${filename}...`)
   try {
-    const result = await resyncBrain(validation.serverUrl, apiKey, content)
+    const result = await uploadVaultFile(apiKey, filename, content)
     spinner.stop()
-
-    console.log()
-    console.log(success('  \u2713 Brain resynced.'))
-    console.log(dim(`  ${result.summary}`))
+    console.log(success(`  Uploaded ${result.filename}`) + dim(` (${formatSize(result.sizeBytes)})`))
+    if (result.summary) console.log(dim(`  ${result.summary}`))
     console.log()
   } catch (err: unknown) {
     spinner.stop()
-    const msg = (err as Error).message
-    console.log(chalk.red(`  \u2717 ${msg}`))
+    console.log(chalk.red(`  ${(err as Error).message}`))
     console.log()
-    throw new CliError(msg)
   }
 }
 

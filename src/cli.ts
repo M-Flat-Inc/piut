@@ -10,11 +10,12 @@ import { loginCommand } from './commands/login.js'
 import { logoutCommand } from './commands/logout.js'
 import { updateCommand } from './commands/update.js'
 import { doctorCommand } from './commands/doctor.js'
+import { vaultListCommand, vaultUploadCommand, vaultReadCommand, vaultDeleteCommand } from './commands/vault.js'
 import { interactiveMenu } from './commands/interactive.js'
 import { checkForUpdate } from './lib/update-check.js'
 import { CliError } from './types.js'
 
-const VERSION = '3.6.0'
+const VERSION = '3.7.0'
 
 /**
  * Wrap a command action so that CliError (thrown instead of process.exit(1)
@@ -112,6 +113,36 @@ program
   .option('--fix', 'Auto-fix stale configurations')
   .option('--json', 'Output results as JSON')
   .action(withExit(doctorCommand))
+
+const vault = program
+  .command('vault')
+  .description('Manage your file vault (upload, list, read, delete)')
+
+vault
+  .command('list')
+  .description('List all files in your vault')
+  .option('-k, --key <key>', 'API key')
+  .action(withExit(vaultListCommand))
+
+vault
+  .command('upload <file>')
+  .description('Upload a file to your vault')
+  .option('-k, --key <key>', 'API key')
+  .action(withExit(vaultUploadCommand))
+
+vault
+  .command('read <filename>')
+  .description('Read a file from your vault')
+  .option('-k, --key <key>', 'API key')
+  .option('-o, --output <path>', 'Save to a local file instead of printing')
+  .action(withExit(vaultReadCommand))
+
+vault
+  .command('delete <filename>')
+  .description('Delete a file from your vault')
+  .option('-k, --key <key>', 'API key')
+  .option('-y, --yes', 'Skip confirmation prompt')
+  .action(withExit(vaultDeleteCommand))
 
 program
   .command('update')
