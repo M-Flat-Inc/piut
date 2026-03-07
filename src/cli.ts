@@ -48,6 +48,8 @@ program
   .description('Build or rebuild your brain from your files')
   .option('-k, --key <key>', 'API key')
   .option('--folders <paths>', 'Comma-separated folder paths to scan')
+  .option('-y, --yes', 'Auto-publish after build')
+  .option('--no-publish', 'Skip publish prompt after build')
   .action(withExit(buildCommand))
 
 program

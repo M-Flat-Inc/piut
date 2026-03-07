@@ -1,7 +1,7 @@
-import { select, checkbox, input } from '@inquirer/prompts'
+import { select, checkbox, input, confirm } from '@inquirer/prompts'
 import chalk from 'chalk'
 import os from 'os'
-import { buildBrainStreaming } from '../lib/api.js'
+import { buildBrainStreaming, publishServer } from '../lib/api.js'
 import { scanForBrain, getDefaultScanDirs } from '../lib/brain-scanner.js'
 import type { ScanProgress } from '../lib/brain-scanner.js'
 import { banner, brand, success, dim, Spinner } from '../lib/ui.js'
@@ -12,6 +12,8 @@ import { CliError } from '../types.js'
 interface BuildOptions {
   key?: string
   folders?: string
+  yes?: boolean
+  publish?: boolean
 }
 
 export async function buildCommand(options: BuildOptions): Promise<void> {
@@ -132,7 +134,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
           break
 
         case 'progress':
-          spinner.updateTokens(event.data.tokens as number)
+          // Token count intentionally not displayed (not user's tokens)
           break
 
         case 'section':
@@ -157,34 +159,82 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       throw new CliError('No response received from server')
     }
 
-    // Show final summary
+    // Show brain content
     console.log()
     console.log(success('  Brain built!'))
     console.log()
 
-    const sectionSummary = (content: string, label: string) => {
-      if (!content || !content.trim()) {
-        console.log(dim(`  ${label} \u2014 (empty)`))
-      } else {
-        const firstLine = content.split('\n').find(l => l.trim() && !l.startsWith('#'))?.trim() || ''
-        const preview = firstLine.length > 60 ? firstLine.slice(0, 60) + '...' : firstLine
-        console.log(success(`  ${label}`) + dim(` \u2014 ${preview}`))
-      }
+    const SECTION_LABELS: Record<string, string> = {
+      about: 'About',
+      soul: 'Soul',
+      areas: 'Areas of Responsibility',
+      projects: 'Projects',
+      memory: 'Memory',
     }
 
-    sectionSummary(sections.about || '', 'About')
-    sectionSummary(sections.soul || '', 'Soul')
-    sectionSummary(sections.areas || '', 'Areas of Responsibility')
-    sectionSummary(sections.projects || '', 'Projects')
-    sectionSummary(sections.memory || '', 'Memory')
+    for (const [key, label] of Object.entries(SECTION_LABELS)) {
+      const content = (sections as Record<string, string>)[key] || ''
+      if (!content.trim()) {
+        console.log(dim(`  ${label} — (empty)`))
+      } else {
+        console.log(success(`  ${label}`))
+        const lines = content.split('\n').filter(l => l.trim()).slice(0, 5)
+        for (const line of lines) {
+          console.log(dim(`    ${line.length > 80 ? line.slice(0, 80) + '...' : line}`))
+        }
+        const totalLines = content.split('\n').filter(l => l.trim()).length
+        if (totalLines > 5) {
+          console.log(dim(`    ... (${totalLines - 5} more lines)`))
+        }
+      }
+      console.log()
+    }
 
-    console.log()
     console.log(dim(`  Review and edit at ${brand('piut.com/dashboard')}`))
     console.log()
+
+    // Ask to publish (--yes auto-publishes, --no-publish skips)
+    const wantPublish = options.publish === false
+      ? false
+      : options.yes
+        ? true
+        : await confirm({
+            message: 'Publish your brain now?',
+            default: true,
+          })
+
+    if (wantPublish) {
+      try {
+        await publishServer(apiKey)
+        console.log()
+        console.log(success('  ✓ Brain published. MCP server is live.'))
+        console.log()
+      } catch (err: unknown) {
+        console.log()
+        const msg = (err as Error).message
+        if (msg === 'REQUIRES_SUBSCRIPTION') {
+          console.log(chalk.yellow('  Deploy requires an active subscription ($10/mo).'))
+          console.log(`  Subscribe at: ${brand('https://piut.com/dashboard/billing')}`)
+          console.log(dim('  14-day free trial included.'))
+        } else {
+          console.log(chalk.red(`  ✗ ${msg}`))
+        }
+        console.log()
+      }
+    } else {
+      console.log()
+      console.log(dim('  You can publish anytime with: ') + brand('piut deploy'))
+      console.log()
+    }
   } catch (err: unknown) {
     spinner.stop()
     if (err instanceof CliError) throw err
-    console.log(chalk.red(`  \u2717 ${(err as Error).message}`))
-    throw new CliError((err as Error).message)
+    const msg = (err as Error).message || 'Unknown error'
+    // Network/stream errors often show cryptic messages — give a helpful hint
+    const hint = msg === 'terminated' || msg.includes('network') || msg.includes('fetch')
+      ? 'The build was interrupted. This can happen if your scan data is very large. Try using --folders to limit which directories are scanned.'
+      : msg
+    console.log(chalk.red(`  \u2717 ${hint}`))
+    throw new CliError(hint)
   }
 }

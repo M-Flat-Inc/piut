@@ -26,20 +26,14 @@ export class Spinner {
   private interval: ReturnType<typeof setInterval> | null = null
   private startTime = Date.now()
   private message = ''
-  private tokens = 0
   private sections: string[] = []
 
   start(message: string): void {
     this.message = message
     this.startTime = Date.now()
-    this.tokens = 0
     this.sections = []
     this.render()
     this.interval = setInterval(() => this.render(), 80)
-  }
-
-  updateTokens(count: number): void {
-    this.tokens = count
   }
 
   addSection(name: string): void {
@@ -69,9 +63,8 @@ export class Spinner {
     this.frame = (this.frame + 1) % SPINNER_FRAMES.length
     const spinner = brand(SPINNER_FRAMES[this.frame])
     const elapsed = dim(this.elapsed())
-    const tokenStr = this.tokens > 0 ? dim(`  ${this.tokens.toLocaleString()} tokens`) : ''
     this.clearLine()
-    process.stdout.write(`  ${spinner} ${this.message}  ${elapsed}${tokenStr}`)
+    process.stdout.write(`  ${spinner} ${this.message}  ${elapsed}`)
   }
 
   private elapsed(): string {

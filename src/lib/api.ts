@@ -208,6 +208,26 @@ export async function publishServer(key: string): Promise<{ published: boolean }
 }
 
 // ---------------------------------------------------------------------------
+// Brain retrieval
+// ---------------------------------------------------------------------------
+
+export async function getBrain(key: string): Promise<{
+  sections: { about: string; soul: string; areas: string; projects: string; memory: string }
+  hasUnpublishedChanges: boolean
+}> {
+  const res = await fetch(`${API_BASE}/api/cli/brain`, {
+    headers: { Authorization: `Bearer ${key}` },
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Failed to fetch brain (HTTP ${res.status})`)
+  }
+
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
 // Project registration
 // ---------------------------------------------------------------------------
 

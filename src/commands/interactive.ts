@@ -2,7 +2,7 @@ import { select, confirm, checkbox, password } from '@inquirer/prompts'
 import fs from 'fs'
 import path from 'path'
 import chalk from 'chalk'
-import { validateKey, unpublishServer } from '../lib/api.js'
+import { validateKey, unpublishServer, pingMcp, getBrain, publishServer } from '../lib/api.js'
 import { readStore, updateStore } from '../lib/store.js'
 import { banner, brand, success, dim, warning, toolLine } from '../lib/ui.js'
 import { buildCommand } from './build.js'
@@ -168,6 +168,12 @@ export async function interactiveMenu(): Promise<void> {
             disabled: !isDeployed && '(deploy brain first)',
           },
           {
+            name: 'View Brain',
+            value: 'view-brain' as const,
+            description: 'View all 5 brain sections',
+            disabled: !hasBrain && '(build brain first)',
+          },
+          {
             name: 'Status',
             value: 'status' as const,
             description: 'Show brain, deployment, and connected tools/projects',
@@ -215,6 +221,9 @@ export async function interactiveMenu(): Promise<void> {
           break
         case 'disconnect-projects':
           await disconnectCommand({})
+          break
+        case 'view-brain':
+          await handleViewBrain(apiKey)
           break
         case 'status':
           statusCommand()
@@ -335,6 +344,13 @@ async function handleConnectTools(apiKey: string, validation: ValidateResponse):
     toolLine(tool.name, success('connected'), '\u2714')
   }
 
+  // Register tool connections with the server (fire-and-forget)
+  if (validation.serverUrl) {
+    await Promise.all(
+      selected.map(({ tool }) => pingMcp(validation.serverUrl, apiKey, tool.name))
+    )
+  }
+
   console.log()
   console.log(dim('  Restart your AI tools for changes to take effect.'))
   console.log()
@@ -393,4 +409,65 @@ async function handleDisconnectTools(): Promise<void> {
   console.log()
   console.log(dim('  Restart your AI tools for changes to take effect.'))
   console.log()
+}
+
+async function handleViewBrain(apiKey: string): Promise<void> {
+  console.log(dim('  Loading brain...'))
+
+  const { sections, hasUnpublishedChanges } = await getBrain(apiKey)
+
+  const SECTION_LABELS: Record<string, string> = {
+    about: 'About',
+    soul: 'Soul',
+    areas: 'Areas of Responsibility',
+    projects: 'Projects',
+    memory: 'Memory',
+  }
+
+  console.log()
+  for (const [key, label] of Object.entries(SECTION_LABELS)) {
+    const content = (sections as Record<string, string>)[key] || ''
+    if (!content.trim()) {
+      console.log(dim(`  ${label} — (empty)`))
+    } else {
+      console.log(success(`  ${label}`))
+      for (const line of content.split('\n')) {
+        console.log(`    ${line}`)
+      }
+    }
+    console.log()
+  }
+
+  console.log(dim(`  Edit at ${brand('piut.com/dashboard')}`))
+  console.log()
+
+  if (hasUnpublishedChanges) {
+    console.log(warning('  You have unpublished changes.'))
+    console.log()
+
+    const wantPublish = await confirm({
+      message: 'Publish now?',
+      default: true,
+    })
+
+    if (wantPublish) {
+      try {
+        await publishServer(apiKey)
+        console.log()
+        console.log(success('  ✓ Brain published.'))
+        console.log()
+      } catch (err: unknown) {
+        console.log()
+        const msg = (err as Error).message
+        if (msg === 'REQUIRES_SUBSCRIPTION') {
+          console.log(chalk.yellow('  Deploy requires an active subscription ($10/mo).'))
+          console.log(`  Subscribe at: ${brand('https://piut.com/dashboard/billing')}`)
+          console.log(dim('  14-day free trial included.'))
+        } else {
+          console.log(chalk.red(`  ✗ ${msg}`))
+        }
+        console.log()
+      }
+    }
+  }
 }

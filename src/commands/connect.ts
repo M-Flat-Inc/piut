@@ -201,8 +201,12 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
     }
   }
 
+  // Count already-connected projects (scanned but no actions needed)
+  const projectsWithActions = new Set(actions.map(a => a.project.path))
+  const alreadyConnectedCount = projects.filter(p => !projectsWithActions.has(p.path)).length
+
   if (actions.length === 0) {
-    console.log(dim('  All projects are already connected.'))
+    console.log(success(`  All ${projects.length} project(s) are already connected.`))
     console.log()
     return
   }
@@ -216,7 +220,10 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
   }
 
   console.log()
-  console.log(`  Found ${brand.bold(String(byProject.size))} project(s) to connect:`)
+  if (alreadyConnectedCount > 0) {
+    console.log(dim(`  ${alreadyConnectedCount} project(s) already connected.`))
+  }
+  console.log(`  Found ${brand.bold(String(byProject.size))} project(s) with new connections available:`)
   console.log()
 
   const projectChoices: { name: string; value: string; checked: boolean }[] = []
@@ -231,6 +238,7 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
     projectChoices.push({
       name: `${projectName} ${dim(`(${desc})`)}`,
       value: projectPath,
+      checked: true,
     })
   }
 

@@ -551,7 +551,7 @@ describe('build command', () => {
     )
 
     const { stdout, exitCode } = await runAsync(
-      ['build', '--key', 'pb_valid_test_key', '--folders', path.join(tmpHome, 'Projects')],
+      ['build', '--key', 'pb_valid_test_key', '--no-publish', '--folders', path.join(tmpHome, 'Projects')],
       { env: apiEnv() }
     )
     expect(exitCode).toBe(0)
