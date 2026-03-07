@@ -56,6 +56,52 @@ export function mergeConfig(
   writeConfig(filePath, existing)
 }
 
+/** Extract the piut-context server config object from a tool's config file. */
+export function getPiutConfig(filePath: string, configKey: string): Record<string, unknown> | null {
+  const config = readConfig(filePath)
+  if (!config) return null
+  const servers = config[configKey] as Record<string, unknown> | undefined
+  const piut = servers?.['piut-context'] as Record<string, unknown> | undefined
+  return piut ?? null
+}
+
+/**
+ * Extract the API key from a piut-context config object.
+ * Handles all 7 tool formats:
+ * - Most tools: headers.Authorization = "Bearer pb_..."
+ * - Claude Desktop: args array containing "Authorization: Bearer pb_..."
+ * - Zed: settings.headers.Authorization = "Bearer pb_..."
+ */
+export function extractKeyFromConfig(piutConfig: Record<string, unknown>): string | null {
+  // Standard: { headers: { Authorization: "Bearer pb_..." } }
+  const headers = piutConfig.headers as Record<string, string> | undefined
+  if (headers?.Authorization) {
+    const match = headers.Authorization.match(/Bearer\s+(pb_\S+)/)
+    if (match) return match[1]
+  }
+
+  // Zed: { settings: { headers: { Authorization: "Bearer pb_..." } } }
+  const settings = piutConfig.settings as Record<string, unknown> | undefined
+  if (settings) {
+    const settingsHeaders = settings.headers as Record<string, string> | undefined
+    if (settingsHeaders?.Authorization) {
+      const match = settingsHeaders.Authorization.match(/Bearer\s+(pb_\S+)/)
+      if (match) return match[1]
+    }
+  }
+
+  // Claude Desktop: { args: [..., "--header", "Authorization: Bearer pb_..."] }
+  const args = piutConfig.args as string[] | undefined
+  if (Array.isArray(args)) {
+    for (const arg of args) {
+      const match = arg.match(/Bearer\s+(pb_\S+)/)
+      if (match) return match[1]
+    }
+  }
+
+  return null
+}
+
 /** Remove piut-context from a config file. Returns true if found and removed. */
 export function removeFromConfig(filePath: string, configKey: string): boolean {
   const config = readConfig(filePath)

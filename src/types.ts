@@ -34,6 +34,8 @@ export interface DetectedTool {
   configPath: string
   exists: boolean
   alreadyConfigured: boolean
+  /** True if piut-context exists but has a different API key than the one being used */
+  staleKey?: boolean
 }
 
 export type ValidateStatus = 'active' | 'unpublished' | 'no_brain'

@@ -10,6 +10,7 @@ import { expandPath } from '../lib/paths.js'
 import { writePiutConfig, writePiutSkill, ensureGitignored } from '../lib/piut-dir.js'
 import { mergeConfig } from '../lib/config.js'
 import { TOOLS } from '../lib/tools.js'
+import { registerProject, getMachineId } from '../lib/api.js'
 import type { ProjectInfo } from '../types.js'
 
 interface ConnectOptions {
@@ -68,18 +69,34 @@ const RULE_FILES: RuleFileConfig[] = [
   },
 ]
 
-const DEDICATED_FILE_CONTENT = `## p\u0131ut Context
-This project uses p\u0131ut for persistent personal context.
-Full skill reference: .piut/skill.md
+const DEDICATED_FILE_CONTENT = `## p\u0131ut Context (MCP Server: piut-context)
 
-Always call \`get_context\` at the start of every conversation.
-Read the \`soul\` section first \u2014 it contains behavioral instructions.
-Use \`update_brain\` for substantial new info, \`append_brain\` for quick notes.
+This project uses p\u0131ut for persistent personal context via MCP (Model Context Protocol).
+p\u0131ut provides MCP tools \u2014 do NOT read local .piut/ files directly. Use the MCP tools.
+
+### Available MCP Tools
+- \`get_context\` \u2014 Fetch all 5 brain sections. CALL THIS FIRST in every conversation.
+- \`get_section\` \u2014 Fetch a single section (about, soul, areas, projects, memory)
+- \`search_brain\` \u2014 Search across all sections
+- \`append_brain\` \u2014 Append text to a section (no AI processing)
+- \`update_brain\` \u2014 AI-powered integration of new info into brain
+- \`prompt_brain\` \u2014 Execute natural language commands against context
+
+### Instructions
+1. Call \`get_context\` at conversation start to load the user's brain
+2. Read the \`soul\` section first \u2014 it contains behavioral instructions
+3. Use \`update_brain\` for substantial new info, \`append_brain\` for quick notes
+4. Never read .piut/config.json directly \u2014 always use the MCP tools
+
+Full skill reference: .piut/skill.md
 `
 
-const APPEND_SECTION = `\n\n## p\u0131ut Context
-Full skill reference: .piut/skill.md
+const APPEND_SECTION = `\n\n## p\u0131ut Context (MCP Server: piut-context)
+
+p\u0131ut provides MCP tools for persistent personal context. Do NOT read local .piut/ files.
+Available tools: \`get_context\`, \`get_section\`, \`search_brain\`, \`append_brain\`, \`update_brain\`, \`prompt_brain\`
 Always call \`get_context\` at the start of every conversation to load personal context.
+Full skill reference: .piut/skill.md
 `
 
 function hasPiutReference(filePath: string): boolean {
@@ -277,6 +294,25 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
       }
       connected++
     }
+  }
+
+  // Register projects server-side (best-effort, non-blocking)
+  const machineId = getMachineId()
+  for (const projectPath of selectedPaths) {
+    const projectActions = byProject.get(projectPath) || []
+    const projectName = path.basename(projectPath)
+    const toolsDetected = [...new Set(projectActions.map(a => a.tool))]
+    const configFilesWritten = projectActions.map(a => a.filePath)
+
+    registerProject(apiKey, {
+      projectName,
+      projectPath,
+      machineId,
+      toolsDetected,
+      configFiles: configFilesWritten,
+    }).catch(() => {
+      // Best-effort — don't fail connect if server registration fails
+    })
   }
 
   console.log()

@@ -6,6 +6,8 @@ import { banner, success, dim, warning } from '../lib/ui.js'
 import { expandPath } from '../lib/paths.js'
 import { removePiutDir, hasPiutDir } from '../lib/piut-dir.js'
 import { isPiutConfigured, removeFromConfig } from '../lib/config.js'
+import { unregisterProject, getMachineId } from '../lib/api.js'
+import { readStore } from '../lib/store.js'
 
 interface DisconnectOptions {
   yes?: boolean
@@ -225,6 +227,17 @@ export async function disconnectCommand(options: DisconnectOptions): Promise<voi
           console.log(warning(`  ✗ ${projectName}/${action.filePath}`) + dim(' — section not found'))
         }
       }
+    }
+  }
+
+  // Unregister projects server-side (best-effort, non-blocking)
+  const store = readStore()
+  if (store.apiKey) {
+    const machineId = getMachineId()
+    for (const projectPath of selectedPaths) {
+      unregisterProject(store.apiKey, projectPath, machineId).catch(() => {
+        // Best-effort — don't fail disconnect if server unregistration fails
+      })
     }
   }
 

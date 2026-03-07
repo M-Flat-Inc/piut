@@ -70,6 +70,26 @@ describe('SKILL_SNIPPET', () => {
     expect(SKILL_SNIPPET).toContain('append_brain')
     expect(SKILL_SNIPPET).toContain('githubusercontent.com/M-Flat-Inc/piut')
   })
+
+  it('mentions MCP explicitly so AI tools understand the protocol', () => {
+    expect(SKILL_SNIPPET).toContain('MCP')
+    expect(SKILL_SNIPPET).toContain('Model Context Protocol')
+    expect(SKILL_SNIPPET).toContain('piut-context')
+  })
+
+  it('lists all 6 MCP tool names', () => {
+    expect(SKILL_SNIPPET).toContain('get_context')
+    expect(SKILL_SNIPPET).toContain('get_section')
+    expect(SKILL_SNIPPET).toContain('search_brain')
+    expect(SKILL_SNIPPET).toContain('append_brain')
+    expect(SKILL_SNIPPET).toContain('update_brain')
+    expect(SKILL_SNIPPET).toContain('prompt_brain')
+  })
+
+  it('instructs AI not to read local files', () => {
+    expect(SKILL_SNIPPET).toMatch(/[Nn]ever read .piut\/config.json/)
+    expect(SKILL_SNIPPET).toMatch(/[Dd]o NOT read local/)
+  })
 })
 
 describe('PROJECT_SKILL_SNIPPET', () => {
@@ -81,5 +101,19 @@ describe('PROJECT_SKILL_SNIPPET', () => {
     expect(PROJECT_SKILL_SNIPPET).toContain('update_brain')
     expect(PROJECT_SKILL_SNIPPET).toContain('append_brain')
     expect(PROJECT_SKILL_SNIPPET).not.toContain('githubusercontent.com')
+  })
+
+  it('mentions MCP explicitly', () => {
+    expect(PROJECT_SKILL_SNIPPET).toContain('MCP')
+    expect(PROJECT_SKILL_SNIPPET).toContain('piut-context')
+  })
+
+  it('lists all 6 MCP tool names', () => {
+    expect(PROJECT_SKILL_SNIPPET).toContain('get_context')
+    expect(PROJECT_SKILL_SNIPPET).toContain('get_section')
+    expect(PROJECT_SKILL_SNIPPET).toContain('search_brain')
+    expect(PROJECT_SKILL_SNIPPET).toContain('append_brain')
+    expect(PROJECT_SKILL_SNIPPET).toContain('update_brain')
+    expect(PROJECT_SKILL_SNIPPET).toContain('prompt_brain')
   })
 })

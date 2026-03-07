@@ -1,10 +1,13 @@
 import fs from 'fs'
 import path from 'path'
+import chalk from 'chalk'
 import { TOOLS } from '../lib/tools.js'
 import { resolveConfigPaths } from '../lib/paths.js'
-import { isPiutConfigured } from '../lib/config.js'
+import { isPiutConfigured, getPiutConfig, extractKeyFromConfig } from '../lib/config.js'
 import { scanForProjects } from '../lib/brain-scanner.js'
 import { banner, success, dim, warning, toolLine, brand } from '../lib/ui.js'
+import { readStore } from '../lib/store.js'
+import { validateKey, verifyMcpEndpoint } from '../lib/api.js'
 
 /** Files that piut connect creates or appends to */
 const PIUT_FILES = [
@@ -25,8 +28,17 @@ function hasPiutReference(filePath: string): boolean {
   }
 }
 
-export function statusCommand(): void {
+interface StatusOptions {
+  verify?: boolean
+}
+
+export async function statusCommand(options: StatusOptions = {}): Promise<void> {
   banner()
+
+  if (options.verify) {
+    await verifyStatus()
+    return
+  }
 
   // Section 1: AI tool configuration
   console.log('  AI tool configuration:')
@@ -89,5 +101,93 @@ export function statusCommand(): void {
     console.log(dim(`  ${connectedCount} project(s) connected to your brain.`))
   }
 
+  console.log()
+}
+
+async function verifyStatus(): Promise<void> {
+  const store = readStore()
+  let issues = 0
+
+  // Section 1: API Key
+  console.log('  API Key')
+
+  if (!store.apiKey) {
+    console.log(warning('  \u2717 No saved API key'))
+    console.log(dim('    Run ') + brand('piut setup') + dim(' to configure.'))
+    issues++
+    console.log()
+    return
+  }
+
+  let slug: string | undefined
+  let serverUrl: string | undefined
+  try {
+    const info = await validateKey(store.apiKey)
+    slug = info.slug
+    serverUrl = info.serverUrl
+    const masked = store.apiKey.slice(0, 6) + '...'
+    console.log(success(`  \u2714 Key valid: ${info.displayName} (${info.slug})`) + dim(`  ${masked}`))
+  } catch (err: unknown) {
+    console.log(warning(`  \u2717 Key invalid: ${(err as Error).message}`))
+    issues++
+  }
+
+  console.log()
+
+  // Section 2: Tool configurations
+  console.log('  Tool Configurations')
+
+  for (const tool of TOOLS) {
+    const paths = resolveConfigPaths(tool.configPaths)
+
+    for (const configPath of paths) {
+      if (!fs.existsSync(configPath)) continue
+
+      const piutConfig = getPiutConfig(configPath, tool.configKey)
+      if (!piutConfig) {
+        toolLine(tool.name, dim('installed, not connected'), '\u25cb')
+        break
+      }
+
+      const configKey = extractKeyFromConfig(piutConfig)
+      if (configKey && configKey === store.apiKey) {
+        toolLine(tool.name, success('key matches'), '\u2714')
+      } else if (configKey) {
+        const masked = configKey.slice(0, 6) + '...'
+        toolLine(tool.name, chalk.red(`key STALE (${masked})`), '\u2717')
+        issues++
+      } else {
+        toolLine(tool.name, dim('configured (key not extractable)'), '\u25cb')
+      }
+      break
+    }
+  }
+
+  console.log()
+
+  // Section 3: MCP Server
+  console.log('  MCP Server')
+
+  if (serverUrl && store.apiKey) {
+    const result = await verifyMcpEndpoint(serverUrl, store.apiKey)
+    if (result.ok) {
+      console.log(success(`  \u2714 ${serverUrl}`) + dim(`  ${result.tools.length} tools, ${result.latencyMs}ms`))
+    } else {
+      console.log(warning(`  \u2717 ${serverUrl}`) + dim(`  ${result.error}`))
+      issues++
+    }
+  } else if (!serverUrl) {
+    console.log(dim('  Skipped (no server URL)'))
+  }
+
+  console.log()
+
+  // Summary
+  if (issues > 0) {
+    console.log(warning(`  Issues Found: ${issues}`))
+    console.log(dim('  Run ') + brand('piut doctor') + dim(' for detailed diagnostics.'))
+  } else {
+    console.log(success('  All checks passed.'))
+  }
   console.log()
 }

@@ -3,10 +3,10 @@ import path from 'path'
 import { execSync } from 'child_process'
 import { password, confirm, checkbox } from '@inquirer/prompts'
 import chalk from 'chalk'
-import { validateKey, pingMcp } from '../lib/api.js'
+import { validateKey, pingMcp, verifyMcpEndpoint } from '../lib/api.js'
 import { TOOLS } from '../lib/tools.js'
-import { resolveConfigPaths } from '../lib/paths.js'
-import { mergeConfig, isPiutConfigured } from '../lib/config.js'
+import { resolveConfigPaths, expandPath } from '../lib/paths.js'
+import { mergeConfig, isPiutConfigured, getPiutConfig, extractKeyFromConfig } from '../lib/config.js'
 import { placeSkillFile } from '../lib/skill.js'
 import { writePiutConfig, writePiutSkill, ensureGitignored } from '../lib/piut-dir.js'
 import { banner, brand, success, warning, dim, toolLine } from '../lib/ui.js'
@@ -68,7 +68,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     return
   }
 
-  // 3. Detect installed tools
+  // 3. Detect installed tools (with stale key detection)
   const detected: DetectedTool[] = []
   const toolFilter = options.tool
 
@@ -83,11 +83,26 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
       const parentExists = fs.existsSync(path.dirname(configPath))
 
       if (exists || parentExists) {
+        const configured = exists && isPiutConfigured(configPath, tool.configKey)
+
+        // Check if existing config has a different (stale) key
+        let staleKey = false
+        if (configured) {
+          const piutConfig = getPiutConfig(configPath, tool.configKey)
+          if (piutConfig) {
+            const existingKey = extractKeyFromConfig(piutConfig)
+            if (existingKey && existingKey !== apiKey) {
+              staleKey = true
+            }
+          }
+        }
+
         detected.push({
           tool,
           configPath,
           exists,
-          alreadyConfigured: exists && isPiutConfigured(configPath, tool.configKey),
+          alreadyConfigured: configured && !staleKey,
+          staleKey,
         })
         break
       }
@@ -102,12 +117,12 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     return
   }
 
-  // 4. Select tools to configure
+  // 4. Select tools to configure (stale configs auto-selected)
   let selected: DetectedTool[]
 
   if (options.yes) {
-    // Auto-select all unconfigured tools
-    selected = detected.filter(d => !d.alreadyConfigured)
+    // Auto-select unconfigured + stale tools
+    selected = detected.filter(d => !d.alreadyConfigured || d.staleKey)
     if (selected.length === 0) {
       console.log(dim('  All detected tools are already configured.'))
       console.log()
@@ -115,11 +130,13 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     }
   } else {
     const choices = detected.map(d => ({
-      name: d.alreadyConfigured
-        ? `${d.tool.name} ${dim('(already configured)')}`
-        : d.tool.name,
+      name: d.staleKey
+        ? `${d.tool.name} ${warning('(stale key — will update)')}`
+        : d.alreadyConfigured
+          ? `${d.tool.name} ${dim('(already configured)')}`
+          : d.tool.name,
       value: d,
-      checked: !d.alreadyConfigured,
+      checked: !d.alreadyConfigured || d.staleKey,
     }))
 
     selected = await checkbox({
@@ -141,7 +158,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
   for (const det of selected) {
     const { tool, configPath, alreadyConfigured } = det
 
-    if (alreadyConfigured) {
+    if (alreadyConfigured && !det.staleKey) {
       if (options.yes) {
         skipped.push(tool.name)
         continue
@@ -158,14 +175,38 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
 
     // Claude Code: try quick command first
     if (tool.id === 'claude-code' && tool.quickCommand && isCommandAvailable('claude')) {
+      let quickSuccess = false
       try {
         execSync(tool.quickCommand(slug, apiKey), { stdio: 'pipe' })
-        configured.push(tool.name)
-        toolLine(tool.name, success('configured via CLI'), '✔')
-        continue
-      } catch {
+        // Verify the config was actually written
+        const claudeJson = expandPath('~/.claude.json')
+        const written = getPiutConfig(claudeJson, tool.configKey)
+        if (written) {
+          quickSuccess = true
+          configured.push(tool.name)
+          toolLine(tool.name, success('configured via CLI'), '✔')
+          continue
+        }
+        // Quick command claimed success but config not found — try with explicit scope
+        try {
+          execSync(tool.quickCommand(slug, apiKey) + ' --scope user', { stdio: 'pipe' })
+          const retryCheck = getPiutConfig(claudeJson, tool.configKey)
+          if (retryCheck) {
+            quickSuccess = true
+            configured.push(tool.name)
+            toolLine(tool.name, success('configured via CLI'), '✔')
+            continue
+          }
+        } catch { /* fall through to config file merge */ }
+        console.log(dim('  Quick command succeeded but config not found, using config file...'))
+      } catch (err: unknown) {
+        const stderr = (err as { stderr?: Buffer })?.stderr?.toString().trim()
+        if (stderr) {
+          console.log(dim(`  Claude CLI: ${stderr}`))
+        }
         console.log(dim('  Claude CLI command failed, using config file...'))
       }
+      if (quickSuccess) continue
     }
 
     // Standard config file merge
@@ -214,11 +255,32 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     }
   }
 
-  // 8. Register connections by pinging the MCP endpoint for each configured tool
+  // 8. Verify configurations and MCP endpoint
   if (configured.length > 0) {
     const { serverUrl } = validationResult
     console.log()
-    console.log(dim('  Registering connections...'))
+    console.log(dim('  Verifying...'))
+
+    // Verify each tool's config was written correctly
+    for (const det of selected) {
+      if (!configured.includes(det.tool.name)) continue
+      const piutConfig = getPiutConfig(det.configPath, det.tool.configKey)
+      if (piutConfig) {
+        toolLine(det.tool.name, success('config verified'), '✔')
+      } else {
+        toolLine(det.tool.name, warning('config not found — run piut doctor'), '✗')
+      }
+    }
+
+    // Verify MCP endpoint + register connections
+    const mcpResult = await verifyMcpEndpoint(serverUrl, apiKey)
+    if (mcpResult.ok) {
+      toolLine('MCP server', success(`${mcpResult.tools.length} tools available`) + dim(` (${mcpResult.latencyMs}ms)`), '✔')
+    } else {
+      toolLine('MCP server', warning(mcpResult.error || 'unreachable') + dim(' — run piut doctor'), '✗')
+    }
+
+    // Also register connections in background
     await Promise.all(
       configured.map(toolName => pingMcp(serverUrl, apiKey, toolName))
     )
@@ -236,6 +298,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
   console.log()
   console.log(dim('  Restart your AI tools for changes to take effect.'))
   console.log(dim('  Verify: ask any AI "What do you know about me from my context?"'))
+  console.log(dim('  Diagnose issues: ') + chalk.cyan('piut doctor'))
   console.log()
 }
 

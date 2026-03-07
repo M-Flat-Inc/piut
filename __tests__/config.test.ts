@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { readConfig, writeConfig, mergeConfig, removeFromConfig, isPiutConfigured } from '../src/lib/config.js'
+import { readConfig, writeConfig, mergeConfig, removeFromConfig, isPiutConfigured, getPiutConfig, extractKeyFromConfig } from '../src/lib/config.js'
 
 let tmpDir: string
 
@@ -143,6 +143,74 @@ describe('mergeConfig', () => {
     mergeConfig(file, 'mcpServers', { url: 'http://piut.com' })
     const result = readConfig(file)
     expect(result?.someOtherSetting).toBe(true)
+  })
+})
+
+describe('getPiutConfig', () => {
+  it('returns null for missing files', () => {
+    expect(getPiutConfig(tmpFile('missing.json'), 'mcpServers')).toBeNull()
+  })
+
+  it('returns null when piut-context is not present', () => {
+    const file = tmpFile('nopiut.json')
+    writeConfig(file, { mcpServers: { other: { url: 'http://example.com' } } })
+    expect(getPiutConfig(file, 'mcpServers')).toBeNull()
+  })
+
+  it('extracts piut-context config object', () => {
+    const file = tmpFile('haspiut.json')
+    const piutConfig = { type: 'http', url: 'https://piut.com/api/mcp/test', headers: { Authorization: 'Bearer pb_abc123' } }
+    writeConfig(file, { mcpServers: { 'piut-context': piutConfig, other: { url: 'http://other.com' } } })
+    expect(getPiutConfig(file, 'mcpServers')).toEqual(piutConfig)
+  })
+
+  it('works with servers key (GitHub Copilot)', () => {
+    const file = tmpFile('copilot.json')
+    const piutConfig = { type: 'http', url: 'https://piut.com/api/mcp/test' }
+    writeConfig(file, { servers: { 'piut-context': piutConfig } })
+    expect(getPiutConfig(file, 'servers')).toEqual(piutConfig)
+  })
+
+  it('works with context_servers key (Zed)', () => {
+    const file = tmpFile('zed.json')
+    const piutConfig = { settings: { url: 'https://piut.com/api/mcp/test', headers: { Authorization: 'Bearer pb_xyz' } } }
+    writeConfig(file, { context_servers: { 'piut-context': piutConfig } })
+    expect(getPiutConfig(file, 'context_servers')).toEqual(piutConfig)
+  })
+})
+
+describe('extractKeyFromConfig', () => {
+  it('extracts key from standard headers (Claude Code, Cursor, Amazon Q)', () => {
+    const config = { type: 'http', url: 'https://piut.com/api/mcp/test', headers: { Authorization: 'Bearer pb_abc123def456' } }
+    expect(extractKeyFromConfig(config)).toBe('pb_abc123def456')
+  })
+
+  it('extracts key from Windsurf format (serverUrl)', () => {
+    const config = { serverUrl: 'https://piut.com/api/mcp/test', headers: { Authorization: 'Bearer pb_wind123' } }
+    expect(extractKeyFromConfig(config)).toBe('pb_wind123')
+  })
+
+  it('extracts key from Zed format (settings.headers)', () => {
+    const config = { settings: { url: 'https://piut.com/api/mcp/test', headers: { Authorization: 'Bearer pb_zed456' } } }
+    expect(extractKeyFromConfig(config)).toBe('pb_zed456')
+  })
+
+  it('extracts key from Claude Desktop format (args array)', () => {
+    const config = { command: 'npx', args: ['-y', 'mcp-remote', 'https://piut.com/api/mcp/test', '--header', 'Authorization: Bearer pb_desktop789'] }
+    expect(extractKeyFromConfig(config)).toBe('pb_desktop789')
+  })
+
+  it('returns null when no key found', () => {
+    expect(extractKeyFromConfig({ url: 'https://piut.com' })).toBeNull()
+  })
+
+  it('returns null for empty config', () => {
+    expect(extractKeyFromConfig({})).toBeNull()
+  })
+
+  it('returns null for non-pb_ bearer tokens', () => {
+    const config = { headers: { Authorization: 'Bearer sk_other_key' } }
+    expect(extractKeyFromConfig(config)).toBeNull()
   })
 })
 

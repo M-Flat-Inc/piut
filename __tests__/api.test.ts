@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { validateKey, buildBrain, publishServer } from '../src/lib/api.js'
+import { validateKey, buildBrain, publishServer, verifyMcpEndpoint } from '../src/lib/api.js'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
@@ -113,6 +113,63 @@ describe('buildBrain', () => {
 
     await expect(buildBrain('pb_test', { summary: { folders: [], projects: [], configFiles: [], recentDocuments: [] } }))
       .rejects.toThrow('AI generation failed')
+  })
+})
+
+describe('verifyMcpEndpoint', () => {
+  it('returns ok with tool names on success', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          tools: [
+            { name: 'get_context' },
+            { name: 'get_section' },
+            { name: 'search_brain' },
+          ],
+        },
+      }),
+    })
+
+    const result = await verifyMcpEndpoint('https://piut.com/api/mcp/test', 'pb_key')
+    expect(result.ok).toBe(true)
+    expect(result.tools).toEqual(['get_context', 'get_section', 'search_brain'])
+    expect(result.latencyMs).toBeGreaterThanOrEqual(0)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('returns error on HTTP failure', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+    })
+
+    const result = await verifyMcpEndpoint('https://piut.com/api/mcp/test', 'pb_bad')
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('HTTP 401')
+    expect(result.tools).toEqual([])
+  })
+
+  it('returns error on network failure', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('fetch failed'))
+
+    const result = await verifyMcpEndpoint('https://piut.com/api/mcp/test', 'pb_key')
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('fetch failed')
+    expect(result.tools).toEqual([])
+  })
+
+  it('handles empty tools list gracefully', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ jsonrpc: '2.0', id: 1, result: {} }),
+    })
+
+    const result = await verifyMcpEndpoint('https://piut.com/api/mcp/test', 'pb_key')
+    expect(result.ok).toBe(true)
+    expect(result.tools).toEqual([])
   })
 })
 

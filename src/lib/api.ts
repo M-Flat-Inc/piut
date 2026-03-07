@@ -1,3 +1,5 @@
+import os from 'os'
+import crypto from 'crypto'
 import type { ValidateResponse, BrainSections, BuildBrainInput } from '../types.js'
 
 const API_BASE = process.env.PIUT_API_BASE || 'https://piut.com'
@@ -114,6 +116,47 @@ export async function* buildBrainStreaming(
 }
 
 /**
+ * Verify the MCP endpoint is reachable and returns tools.
+ * Returns structured results (tool names, latency) instead of just boolean.
+ */
+export async function verifyMcpEndpoint(
+  serverUrl: string,
+  key: string,
+): Promise<{ ok: boolean; tools: string[]; latencyMs: number; error?: string }> {
+  const start = Date.now()
+  try {
+    const res = await fetch(serverUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'piut-cli (verify)',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/list',
+      }),
+    })
+    const latencyMs = Date.now() - start
+
+    if (!res.ok) {
+      return { ok: false, tools: [], latencyMs, error: `HTTP ${res.status}` }
+    }
+
+    const data = await res.json()
+    const result = data?.result
+    const tools: string[] = Array.isArray(result?.tools)
+      ? result.tools.map((t: { name?: string }) => t.name).filter(Boolean)
+      : []
+
+    return { ok: true, tools, latencyMs }
+  } catch (err: unknown) {
+    return { ok: false, tools: [], latencyMs: Date.now() - start, error: (err as Error).message }
+  }
+}
+
+/**
  * Ping the MCP endpoint to register a tool connection.
  * Sends a minimal JSON-RPC `tools/list` request with a User-Agent
  * that identifies which tool was just configured by the CLI.
@@ -162,6 +205,62 @@ export async function publishServer(key: string): Promise<{ published: boolean }
   }
 
   return res.json()
+}
+
+// ---------------------------------------------------------------------------
+// Project registration
+// ---------------------------------------------------------------------------
+
+export function getMachineId(): string {
+  const hostname = os.hostname()
+  return crypto.createHash('sha256').update(hostname).digest('hex').slice(0, 16)
+}
+
+export async function registerProject(
+  key: string,
+  project: {
+    projectName: string
+    projectPath: string
+    machineId: string
+    toolsDetected: string[]
+    configFiles: string[]
+  },
+): Promise<{ id: string; projectName: string }> {
+  const res = await fetch(`${API_BASE}/api/cli/projects`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(project),
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Register project failed (HTTP ${res.status})`)
+  }
+
+  return res.json()
+}
+
+export async function unregisterProject(
+  key: string,
+  projectPath: string,
+  machineId: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/cli/projects`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ projectPath, machineId }),
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Unregister project failed (HTTP ${res.status})`)
+  }
 }
 
 export async function unpublishServer(key: string): Promise<{ published: boolean }> {
