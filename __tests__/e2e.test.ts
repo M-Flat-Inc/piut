@@ -72,8 +72,9 @@ let mockPort: number
 beforeAll(async () => {
   return new Promise<void>((resolve) => {
     mockServer = http.createServer((req, res) => {
+      const auth = req.headers.authorization
+
       if (req.url === '/api/cli/validate') {
-        const auth = req.headers.authorization
         if (auth === 'Bearer pb_valid_test_key') {
           res.writeHead(200, { 'Content-Type': 'application/json' })
           res.end(
@@ -87,6 +88,34 @@ beforeAll(async () => {
           res.writeHead(401, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ error: 'Invalid or revoked API key' }))
         }
+      } else if (req.url === '/api/cli/build-brain' && req.method === 'POST') {
+        if (auth !== 'Bearer pb_valid_test_key') {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Invalid or revoked API key' }))
+          return
+        }
+        let body = ''
+        req.on('data', (chunk: Buffer) => { body += chunk.toString() })
+        req.on('end', () => {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({
+            sections: {
+              about: 'Test user is a developer.',
+              soul: 'This section is yours to write.',
+              areas: 'Engineering',
+              projects: '- TestProject: Active',
+              memory: 'Uses TypeScript.',
+            },
+          }))
+        })
+      } else if (req.url === '/api/mcp/publish' && req.method === 'POST') {
+        if (auth !== 'Bearer pb_valid_test_key') {
+          res.writeHead(401, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Invalid or revoked API key' }))
+          return
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ published: true }))
       } else {
         res.writeHead(404)
         res.end()
@@ -463,5 +492,227 @@ describe('full setup → status → verify flow', () => {
     expect(statusResult.exitCode).toBe(0)
     expect(statusResult.stdout).toContain('Cursor')
     expect(statusResult.stdout).toContain('connected')
+  })
+})
+
+// ─── Build command ──────────────────────────────────────────────────
+
+describe('build command', () => {
+  it('build --help shows all options', () => {
+    const { stdout, exitCode } = runSync(['build', '--help'])
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('--key')
+    expect(stdout).toContain('--folders')
+  })
+
+  it('builds brain from scanned projects', async () => {
+    // Create a project directory with enough content
+    const projectDir = path.join(tmpHome, 'Projects', 'my-app')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.writeFileSync(
+      path.join(projectDir, 'package.json'),
+      JSON.stringify({ name: 'my-app', description: 'A test application' })
+    )
+    fs.writeFileSync(
+      path.join(projectDir, 'CLAUDE.md'),
+      '# CLAUDE.md\n\nThis is a test project with some rules and guidelines for AI tools.'
+    )
+
+    const { stdout, exitCode } = await runAsync(
+      ['build', '--key', 'pb_valid_test_key', '--folders', path.join(tmpHome, 'Projects')],
+      { env: apiEnv() }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('Brain built')
+    expect(stdout).toContain('About')
+    expect(stdout).toContain('Soul')
+  })
+
+  it('warns when no projects found', async () => {
+    const emptyDir = path.join(tmpHome, 'empty-dir')
+    fs.mkdirSync(emptyDir, { recursive: true })
+
+    const { stdout, exitCode } = await runAsync(
+      ['build', '--key', 'pb_valid_test_key', '--folders', emptyDir],
+      { env: apiEnv() }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('No projects or config files found')
+  })
+})
+
+// ─── Deploy command ─────────────────────────────────────────────────
+
+describe('deploy command', () => {
+  it('deploy --help shows all options', () => {
+    const { stdout, exitCode } = runSync(['deploy', '--help'])
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('--key')
+    expect(stdout).toContain('--yes')
+  })
+
+  it('deploys brain with --yes flag', async () => {
+    const { stdout, exitCode } = await runAsync(
+      ['deploy', '--key', 'pb_valid_test_key', '--yes'],
+      { env: apiEnv() }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('Brain deployed')
+    expect(stdout).toContain('MCP server live')
+  })
+
+  it('fails with invalid key', async () => {
+    const { stdout, exitCode } = await runAsync(
+      ['deploy', '--key', 'pb_invalid_key', '--yes'],
+      { env: apiEnv() }
+    )
+    expect(exitCode).not.toBe(0)
+    expect(stdout).toContain('Invalid or revoked API key')
+  })
+})
+
+// ─── Connect command ────────────────────────────────────────────────
+
+describe('connect command', () => {
+  it('connect --help shows all options', () => {
+    const { stdout, exitCode } = runSync(['connect', '--help'])
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('--key')
+    expect(stdout).toContain('--yes')
+    expect(stdout).toContain('--folders')
+  })
+
+  it('connects a project with CLAUDE.md', async () => {
+    // Create a project with .git
+    const projectDir = path.join(tmpHome, 'Projects', 'connect-test')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'connect-test' }))
+
+    const { stdout, exitCode } = await runAsync(
+      ['connect', '--key', 'pb_valid_test_key', '--yes', '--folders', path.join(tmpHome, 'Projects')],
+      { env: apiEnv() }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('file(s) updated')
+
+    // CLAUDE.md should have been created
+    const claudeMd = path.join(projectDir, 'CLAUDE.md')
+    expect(fs.existsSync(claudeMd)).toBe(true)
+    const content = fs.readFileSync(claudeMd, 'utf-8')
+    expect(content).toContain('get_context')
+  })
+
+  it('connects a project with .cursor directory', async () => {
+    const projectDir = path.join(tmpHome, 'Projects', 'cursor-project')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.mkdirSync(path.join(projectDir, '.cursor'), { recursive: true })
+    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'cursor-project' }))
+
+    const { stdout, exitCode } = await runAsync(
+      ['connect', '--key', 'pb_valid_test_key', '--yes', '--folders', path.join(tmpHome, 'Projects')],
+      { env: apiEnv() }
+    )
+    expect(exitCode).toBe(0)
+
+    // .cursor/rules/piut.mdc should exist
+    const piutMdc = path.join(projectDir, '.cursor', 'rules', 'piut.mdc')
+    expect(fs.existsSync(piutMdc)).toBe(true)
+    const content = fs.readFileSync(piutMdc, 'utf-8')
+    expect(content).toContain('get_context')
+  })
+
+  it('skips already connected projects', async () => {
+    const projectDir = path.join(tmpHome, 'Projects', 'already-connected')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'already-connected' }))
+    fs.writeFileSync(path.join(projectDir, 'CLAUDE.md'), '## p\u0131ut Context\nalready here')
+
+    const { stdout, exitCode } = await runAsync(
+      ['connect', '--key', 'pb_valid_test_key', '--yes', '--folders', path.join(tmpHome, 'Projects')],
+      { env: apiEnv() }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('already connected')
+  })
+
+  it('warns when no projects found', async () => {
+    const emptyDir = path.join(tmpHome, 'empty')
+    fs.mkdirSync(emptyDir, { recursive: true })
+
+    const { stdout, exitCode } = await runAsync(
+      ['connect', '--key', 'pb_valid_test_key', '--yes', '--folders', emptyDir],
+      { env: apiEnv() }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('No projects found')
+  })
+})
+
+// ─── Disconnect command ─────────────────────────────────────────────
+
+describe('disconnect command', () => {
+  it('disconnect --help shows all options', () => {
+    const { stdout, exitCode } = runSync(['disconnect', '--help'])
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('--yes')
+    expect(stdout).toContain('--folders')
+  })
+
+  it('disconnects a project by removing dedicated files', async () => {
+    // Create a project with piut connected
+    const projectDir = path.join(tmpHome, 'Projects', 'disconnect-test')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.mkdirSync(path.join(projectDir, '.cursor', 'rules'), { recursive: true })
+    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'disconnect-test' }))
+    fs.writeFileSync(
+      path.join(projectDir, '.cursor', 'rules', 'piut.mdc'),
+      '## p\u0131ut Context\nSkill reference'
+    )
+
+    const { stdout, exitCode } = await runAsync(
+      ['disconnect', '--yes', '--folders', path.join(tmpHome, 'Projects')],
+      { env: {} }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('file(s) updated')
+
+    // piut.mdc should be deleted
+    expect(fs.existsSync(path.join(projectDir, '.cursor', 'rules', 'piut.mdc'))).toBe(false)
+  })
+
+  it('disconnects a project by removing section from CLAUDE.md', async () => {
+    const projectDir = path.join(tmpHome, 'Projects', 'section-test')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'section-test' }))
+    fs.writeFileSync(
+      path.join(projectDir, 'CLAUDE.md'),
+      '# Rules\n\nSome rules.\n\n## p\u0131ut Context\nSkill reference: https://raw.githubusercontent.com/M-Flat-Inc/piut/main/skill.md\nAlways call `get_context`.\n'
+    )
+
+    const { stdout, exitCode } = await runAsync(
+      ['disconnect', '--yes', '--folders', path.join(tmpHome, 'Projects')],
+      { env: {} }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('section removed')
+
+    // CLAUDE.md should still exist but without piut section
+    const content = fs.readFileSync(path.join(projectDir, 'CLAUDE.md'), 'utf-8')
+    expect(content).toContain('Some rules')
+    expect(content).not.toContain('p\u0131ut Context')
+  })
+
+  it('shows nothing to disconnect when no piut references found', async () => {
+    const projectDir = path.join(tmpHome, 'Projects', 'clean-project')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'clean-project' }))
+    fs.writeFileSync(path.join(projectDir, 'CLAUDE.md'), '# Rules\n\nNo piut here.')
+
+    const { stdout, exitCode } = await runAsync(
+      ['disconnect', '--yes', '--folders', path.join(tmpHome, 'Projects')],
+      { env: {} }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('No connected projects')
   })
 })

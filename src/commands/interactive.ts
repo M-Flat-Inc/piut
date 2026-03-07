@@ -1,7 +1,7 @@
 import { select } from '@inquirer/prompts'
 import chalk from 'chalk'
 import { validateKey } from '../lib/api.js'
-import { readSyncConfig, updateSyncConfig } from '../lib/sync-config.js'
+import { readStore, updateStore } from '../lib/store.js'
 import { banner, brand, success, dim } from '../lib/ui.js'
 import { buildCommand } from './build.js'
 import { deployCommand } from './deploy.js'
@@ -11,7 +11,7 @@ import { statusCommand } from './status.js'
 import { password } from '@inquirer/prompts'
 
 async function authenticate(): Promise<string> {
-  const config = readSyncConfig()
+  const config = readStore()
   let apiKey = config.apiKey
 
   if (apiKey) {
@@ -48,7 +48,7 @@ async function authenticate(): Promise<string> {
   }
 
   console.log(success(`  \u2713 Connected as ${result.displayName} (${result.slug})`))
-  updateSyncConfig({ apiKey })
+  updateStore({ apiKey })
 
   return apiKey
 }

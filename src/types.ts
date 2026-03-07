@@ -30,7 +30,6 @@ export interface ValidateResponse {
   displayName: string
   serverUrl: string
   planType: string
-  cloudBackup: boolean
   _contractVersion: string
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { validateKey } from '../src/lib/api.js'
+import { validateKey, buildBrain, publishServer } from '../src/lib/api.js'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
@@ -48,5 +48,125 @@ describe('validateKey', () => {
     mockFetch.mockRejectedValueOnce(new Error('Network error'))
 
     await expect(validateKey('pb_test')).rejects.toThrow('Network error')
+  })
+})
+
+describe('buildBrain', () => {
+  it('sends correct POST request to build-brain endpoint', async () => {
+    const sections = { about: 'test', soul: '', areas: '', projects: '', memory: '' }
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ sections }),
+    })
+
+    const input = {
+      summary: {
+        folders: ['~/Projects'],
+        projects: [{ name: 'test', path: '~/test' }],
+        configFiles: [],
+        recentDocuments: [],
+      },
+    }
+
+    await buildBrain('pb_test', input)
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://piut.com/api/cli/build-brain',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer pb_test',
+          'Content-Type': 'application/json',
+        },
+      })
+    )
+  })
+
+  it('returns brain sections on success', async () => {
+    const sections = { about: 'About me', soul: 'Soul text', areas: 'Areas', projects: 'Projects', memory: 'Memory' }
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ sections }),
+    })
+
+    const result = await buildBrain('pb_test', { summary: { folders: [], projects: [], configFiles: [], recentDocuments: [] } })
+    expect(result).toEqual(sections)
+  })
+
+  it('throws with rate limit message on 429', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      json: () => Promise.resolve({ error: 'Rate limit: maximum 3 brain builds per day' }),
+    })
+
+    await expect(buildBrain('pb_test', { summary: { folders: [], projects: [], configFiles: [], recentDocuments: [] } }))
+      .rejects.toThrow('Rate limit: maximum 3 brain builds per day')
+  })
+
+  it('throws on other errors', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: 'AI generation failed' }),
+    })
+
+    await expect(buildBrain('pb_test', { summary: { folders: [], projects: [], configFiles: [], recentDocuments: [] } }))
+      .rejects.toThrow('AI generation failed')
+  })
+})
+
+describe('publishServer', () => {
+  it('sends correct POST request to publish endpoint', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ published: true }),
+    })
+
+    await publishServer('pb_test')
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://piut.com/api/mcp/publish',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer pb_test',
+          'Content-Type': 'application/json',
+        },
+      })
+    )
+
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(body.published).toBe(true)
+  })
+
+  it('returns published status on success', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ published: true }),
+    })
+
+    const result = await publishServer('pb_test')
+    expect(result.published).toBe(true)
+  })
+
+  it('throws REQUIRES_SUBSCRIPTION on 402', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 402,
+      json: () => Promise.resolve({ error: 'Subscription required' }),
+    })
+
+    await expect(publishServer('pb_test')).rejects.toThrow('REQUIRES_SUBSCRIPTION')
+  })
+
+  it('throws on other errors', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: 'Internal error' }),
+    })
+
+    await expect(publishServer('pb_test')).rejects.toThrow('Internal error')
   })
 })
