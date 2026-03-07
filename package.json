@@ -1,7 +1,7 @@
 {
   "name": "@piut/cli",
-  "version": "1.1.0",
-  "description": "Automatic backup + hosting of all your agent configs across every machine. Version history. Restore any time. One command to set up.",
+  "version": "2.0.0",
+  "description": "Build your AI brain instantly. Deploy it as an MCP server. Connect it to every project.",
   "type": "module",
   "bin": {
     "piut": "dist/cli.js"
@@ -20,16 +20,15 @@
   "keywords": [
     "mcp",
     "ai",
+    "brain",
     "context",
     "cli",
     "claude",
     "cursor",
     "copilot",
     "windsurf",
-    "backup",
-    "sync",
-    "cloud",
-    "agent-config"
+    "deploy",
+    "personal-context"
   ],
   "author": "M-Flat Inc",
   "license": "MIT",

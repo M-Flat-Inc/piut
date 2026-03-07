@@ -30,3 +30,32 @@ export interface ValidateResponse {
   displayName: string
   serverUrl: string
 }
+
+export interface BrainSections {
+  about: string
+  soul: string
+  areas: string
+  projects: string
+  memory: string
+}
+
+export interface BuildBrainInput {
+  summary: {
+    folders: string[]
+    projects: { name: string; path: string; description: string }[]
+    configFiles: { name: string; content: string }[]
+    recentDocuments: { name: string; content: string }[]
+  }
+}
+
+export interface ProjectInfo {
+  name: string
+  path: string
+  description: string
+  hasClaudeMd: boolean
+  hasCursorRules: boolean
+  hasWindsurfRules: boolean
+  hasCopilotInstructions: boolean
+  hasConventionsMd: boolean
+  hasZedRules: boolean
+}
