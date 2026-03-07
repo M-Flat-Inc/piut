@@ -136,6 +136,49 @@ describe('update-check', () => {
     expect(exitSpy).not.toHaveBeenCalled()
   })
 
+  describe('npx detection', () => {
+    it('skips auto-update prompt when running via npx', async () => {
+      const origNpmCommand = process.env.npm_command
+      process.env.npm_command = 'exec'
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ version: '4.0.0' }),
+      })
+
+      await checkForUpdate('3.0.0')
+
+      const output = consoleSpy.mock.calls.map((c) => c[0]).join('\n')
+      expect(output).toContain('Update available')
+      expect(output).toContain('npx @piut/cli@latest')
+      expect(confirm).not.toHaveBeenCalled()
+
+      process.env.npm_command = origNpmCommand
+    })
+
+    it('shows npm install -g when not running via npx', async () => {
+      const origNpmCommand = process.env.npm_command
+      const origUnderscore = process.env._
+      delete process.env.npm_command
+      process.env._ = '/usr/local/bin/node'
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ version: '4.0.0' }),
+      })
+      vi.mocked(confirm).mockResolvedValue(false)
+
+      await checkForUpdate('3.0.0')
+
+      const output = consoleSpy.mock.calls.map((c) => c[0]).join('\n')
+      expect(output).toContain('npm install -g @piut/cli@latest')
+      expect(confirm).toHaveBeenCalled()
+
+      process.env.npm_command = origNpmCommand
+      process.env._ = origUnderscore
+    })
+  })
+
   describe('semver comparison', () => {
     it('detects major version bump', async () => {
       mockFetch.mockResolvedValue({

@@ -7,11 +7,12 @@ import { deployCommand } from './commands/deploy.js'
 import { connectCommand } from './commands/connect.js'
 import { disconnectCommand } from './commands/disconnect.js'
 import { logoutCommand } from './commands/logout.js'
+import { updateCommand } from './commands/update.js'
 import { interactiveMenu } from './commands/interactive.js'
 import { checkForUpdate } from './lib/update-check.js'
 import { CliError } from './types.js'
 
-const VERSION = '3.2.0'
+const VERSION = '3.3.0'
 
 /**
  * Wrap a command action so that CliError (thrown instead of process.exit(1)
@@ -34,7 +35,11 @@ program
   .name('piut')
   .description('Build your AI brain instantly. Deploy it as an MCP server. Connect it to every project.')
   .version(VERSION)
-  .hook('preAction', () => checkForUpdate(VERSION))
+  .hook('preAction', (thisCommand, actionCommand) => {
+    // Skip the auto-check when running `piut update` — it does its own check
+    if (actionCommand.name() === 'update') return
+    return checkForUpdate(VERSION)
+  })
   .action(interactiveMenu)
 
 program
@@ -89,5 +94,19 @@ program
   .command('logout')
   .description('Remove saved API key')
   .action(logoutCommand)
+
+program
+  .command('update')
+  .description('Check for and install CLI updates')
+  .action(() => updateCommand(VERSION))
+
+// Commander's built-in --version skips preAction hooks, so intercept here
+// to ensure the update check runs even on `piut --version`
+const args = process.argv.slice(2)
+if (args.includes('--version') || args.includes('-V')) {
+  console.log(VERSION)
+  await checkForUpdate(VERSION)
+  process.exit(0)
+}
 
 program.parse()
