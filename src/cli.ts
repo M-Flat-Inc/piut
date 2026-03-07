@@ -7,13 +7,17 @@ import { deployCommand } from './commands/deploy.js'
 import { connectCommand } from './commands/connect.js'
 import { disconnectCommand } from './commands/disconnect.js'
 import { interactiveMenu } from './commands/interactive.js'
+import { checkForUpdate } from './lib/update-check.js'
+
+const VERSION = '3.0.0'
 
 const program = new Command()
 
 program
   .name('piut')
   .description('Build your AI brain instantly. Deploy it as an MCP server. Connect it to every project.')
-  .version('3.0.0')
+  .version(VERSION)
+  .hook('preAction', () => checkForUpdate(VERSION))
   .action(interactiveMenu)
 
 program
