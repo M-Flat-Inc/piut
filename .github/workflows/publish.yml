@@ -6,6 +6,10 @@ on:
   repository_dispatch:
     types: [publish-cli]
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -31,6 +35,4 @@ jobs:
           fi
           echo "Version: $PKG_VERSION"
 
-      - run: npm publish --access=public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm publish --access=public --provenance
