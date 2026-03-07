@@ -29,6 +29,9 @@ export interface ValidateResponse {
   slug: string
   displayName: string
   serverUrl: string
+  planType: string
+  cloudBackup: boolean
+  _contractVersion: string
 }
 
 export interface BrainSections {

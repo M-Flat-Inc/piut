@@ -1,0 +1,25 @@
+name: API Compatibility Check
+
+on:
+  repository_dispatch:
+    types: [sbaas-api-changed]
+
+jobs:
+  test:
+    name: CLI Tests (sbaas API Change Detected)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Report result
+        if: failure()
+        run: |
+          echo "::error::CLI tests failed after sbaas API change (commit: ${{ github.event.client_payload.sha }})"
+          echo "The CLI may need updating to match the new sbaas API."
