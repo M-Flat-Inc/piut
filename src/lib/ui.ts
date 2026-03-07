@@ -27,21 +27,40 @@ export class Spinner {
   private startTime = Date.now()
   private message = ''
   private sections: string[] = []
+  private currentSection: string | null = null
 
   start(message: string): void {
     this.message = message
     this.startTime = Date.now()
     this.sections = []
+    this.currentSection = null
     this.render()
     this.interval = setInterval(() => this.render(), 80)
   }
 
   addSection(name: string): void {
-    // Print completed section on its own line, then continue spinner below
-    this.clearLine()
-    const elapsed = this.elapsed()
-    console.log(`  ${success('\u2713')} ${name.padEnd(12)} ${dim(elapsed)}`)
+    // Complete the previous section
+    if (this.currentSection) {
+      this.clearLine()
+      const elapsed = this.elapsed()
+      const label = this.capitalize(this.currentSection)
+      console.log(`  ${success('\u2713')} ${label.padEnd(14)} ${dim(elapsed)}`)
+    }
+    this.currentSection = name
     this.sections.push(name)
+    this.message = `Building ${this.capitalize(name)}...`
+  }
+
+  completeAll(): void {
+    // Complete the last in-progress section
+    if (this.currentSection) {
+      this.clearLine()
+      const elapsed = this.elapsed()
+      const label = this.capitalize(this.currentSection)
+      console.log(`  ${success('\u2713')} ${label.padEnd(14)} ${dim(elapsed)}`)
+      this.currentSection = null
+    }
+    this.message = 'Finalizing...'
   }
 
   updateMessage(message: string): void {
@@ -75,5 +94,9 @@ export class Spinner {
 
   private clearLine(): void {
     process.stdout.write('\r\x1b[K')
+  }
+
+  private capitalize(s: string): string {
+    return s.charAt(0).toUpperCase() + s.slice(1)
   }
 }

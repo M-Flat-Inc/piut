@@ -5,7 +5,7 @@ import { buildBrainStreaming, publishServer } from '../lib/api.js'
 import { scanForBrain, getDefaultScanDirs } from '../lib/brain-scanner.js'
 import type { ScanProgress } from '../lib/brain-scanner.js'
 import { banner, brand, success, dim, Spinner } from '../lib/ui.js'
-import { resolveApiKey } from '../lib/auth.js'
+import { resolveApiKeyWithResult } from '../lib/auth.js'
 import { expandPath } from '../lib/paths.js'
 import { CliError } from '../types.js'
 
@@ -19,7 +19,7 @@ interface BuildOptions {
 export async function buildCommand(options: BuildOptions): Promise<void> {
   banner()
 
-  const apiKey = await resolveApiKey(options.key)
+  const { apiKey, serverUrl } = await resolveApiKeyWithResult(options.key)
 
   // Determine scan folders
   let scanFolders: string[] | undefined
@@ -142,6 +142,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
           break
 
         case 'complete':
+          spinner.completeAll()
           sections = (event.data.sections || {}) as Record<string, string>
           break
 
@@ -175,7 +176,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     for (const [key, label] of Object.entries(SECTION_LABELS)) {
       const content = (sections as Record<string, string>)[key] || ''
       if (!content.trim()) {
-        console.log(dim(`  ${label} — (empty)`))
+        console.log(dim(`  ${label} \u2014 (empty)`))
       } else {
         console.log(success(`  ${label}`))
         const lines = content.split('\n').filter(l => l.trim()).slice(0, 5)
@@ -194,20 +195,26 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     console.log()
 
     // Ask to publish (--yes auto-publishes, --no-publish skips)
-    const wantPublish = options.publish === false
-      ? false
-      : options.yes
-        ? true
-        : await confirm({
-            message: 'Publish your brain now?',
-            default: true,
-          })
+    let wantPublish: boolean
+    if (options.publish === false) {
+      wantPublish = false
+    } else if (options.yes) {
+      wantPublish = true
+    } else {
+      console.log(dim('  You can always make changes later.'))
+      wantPublish = await confirm({
+        message: 'Publish your brain now?',
+        default: true,
+      })
+    }
 
     if (wantPublish) {
       try {
         await publishServer(apiKey)
         console.log()
-        console.log(success('  ✓ Brain published. MCP server is live.'))
+        console.log(success('  \u2713 Brain published. MCP server is live.'))
+        console.log(`  ${brand(serverUrl)}`)
+        console.log(dim('  (accessible only with secure authentication)'))
         console.log()
       } catch (err: unknown) {
         console.log()
@@ -217,7 +224,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
           console.log(`  Subscribe at: ${brand('https://piut.com/dashboard/billing')}`)
           console.log(dim('  14-day free trial included.'))
         } else {
-          console.log(chalk.red(`  ✗ ${msg}`))
+          console.log(chalk.red(`  \u2717 ${msg}`))
         }
         console.log()
       }
@@ -230,7 +237,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     spinner.stop()
     if (err instanceof CliError) throw err
     const msg = (err as Error).message || 'Unknown error'
-    // Network/stream errors often show cryptic messages — give a helpful hint
+    // Network/stream errors often show cryptic messages \u2014 give a helpful hint
     const hint = msg === 'terminated' || msg.includes('network') || msg.includes('fetch')
       ? 'The build was interrupted. This can happen if your scan data is very large. Try using --folders to limit which directories are scanned.'
       : msg
