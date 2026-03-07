@@ -10,6 +10,15 @@ Always call \`get_context\` at the start of a conversation to understand the use
 Read the \`soul\` section first \u2014 it contains behavioral instructions for how to interact.
 Use \`update_brain\` for substantial new information, \`append_brain\` for quick notes.`
 
+/** Skill snippet for connect command — references local .piut/skill.md instead of GitHub URL */
+export const PROJECT_SKILL_SNIPPET = `## p\u0131ut Context
+This project uses p\u0131ut for persistent personal context.
+Full skill reference: .piut/skill.md
+
+Always call \`get_context\` at the start of every conversation.
+Read the \`soul\` section first \u2014 it contains behavioral instructions.
+Use \`update_brain\` for substantial new info, \`append_brain\` for quick notes.`
+
 const SEPARATOR = '\n\n---\n\n'
 
 /** Write or append skill snippet to a rules file. */

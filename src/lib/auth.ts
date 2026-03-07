@@ -3,6 +3,7 @@ import chalk from 'chalk'
 import { validateKey } from './api.js'
 import { readStore, updateStore } from './store.js'
 import { success, dim } from './ui.js'
+import { CliError } from '../types.js'
 
 /** Resolve API key from option, saved config, or interactive prompt. Validates and saves. */
 export async function resolveApiKey(keyOption?: string): Promise<string> {
@@ -25,7 +26,7 @@ export async function resolveApiKey(keyOption?: string): Promise<string> {
   } catch (err: unknown) {
     console.log(chalk.red(`  ✗ ${(err as Error).message}`))
     console.log(dim('  Get a key at https://piut.com/dashboard/keys'))
-    process.exit(1)
+    throw new CliError((err as Error).message)
   }
 
   const label = result.slug
@@ -59,7 +60,7 @@ export async function resolveApiKeyWithResult(keyOption?: string) {
   } catch (err: unknown) {
     console.log(chalk.red(`  ✗ ${(err as Error).message}`))
     console.log(dim('  Get a key at https://piut.com/dashboard/keys'))
-    process.exit(1)
+    throw new CliError((err as Error).message)
   }
 
   const label = result.slug

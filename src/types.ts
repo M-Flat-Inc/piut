@@ -1,3 +1,14 @@
+/**
+ * Thrown instead of process.exit(1) so the interactive menu can catch
+ * errors and return to the menu instead of killing the process.
+ */
+export class CliError extends Error {
+  constructor(message?: string) {
+    super(message || '')
+    this.name = 'CliError'
+  }
+}
+
 export interface ToolDefinition {
   id: string
   name: string

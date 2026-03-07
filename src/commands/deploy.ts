@@ -1,12 +1,11 @@
-import { confirm } from '@inquirer/prompts'
 import chalk from 'chalk'
 import { publishServer } from '../lib/api.js'
 import { banner, brand, success, dim, warning } from '../lib/ui.js'
 import { resolveApiKeyWithResult } from '../lib/auth.js'
+import { CliError } from '../types.js'
 
 interface DeployOptions {
   key?: string
-  yes?: boolean
 }
 
 export async function deployCommand(options: DeployOptions): Promise<void> {
@@ -22,29 +21,12 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     return
   }
 
-  console.log()
-  console.log(dim('  Your brain will be published as an MCP server at:'))
-  console.log(`  ${brand(serverUrl)}`)
-  console.log()
-  console.log(dim('  Any AI tool with this URL can read your brain.'))
-  console.log()
-
-  if (!options.yes) {
-    const proceed = await confirm({
-      message: 'Deploy?',
-      default: true,
-    })
-    if (!proceed) {
-      console.log(dim('  Cancelled.'))
-      return
-    }
-  }
-
   try {
     await publishServer(apiKey)
     console.log()
     console.log(success('  ✓ Brain deployed. MCP server live.'))
-    console.log(dim(`  URL: ${serverUrl}`))
+    console.log(`  ${brand(serverUrl)}`)
+    console.log(dim('  (securely accessible only with authentication)'))
     console.log()
     console.log(dim('  Next: run ') + brand('piut connect') + dim(' to add brain references to your projects.'))
     console.log()
@@ -59,7 +41,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
       console.log()
     } else {
       console.log(chalk.red(`  ✗ ${msg}`))
-      process.exit(1)
+      throw new CliError(msg)
     }
   }
 }

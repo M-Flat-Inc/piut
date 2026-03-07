@@ -27,3 +27,12 @@ export function updateStore(updates: Partial<PiutConfig>): PiutConfig {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(updated, null, 2) + '\n', 'utf-8')
   return updated
 }
+
+/** Remove the saved API key */
+export function clearStore(): void {
+  try {
+    fs.unlinkSync(CONFIG_FILE)
+  } catch {
+    // Already gone — nothing to do
+  }
+}

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { placeSkillFile, SKILL_SNIPPET } from '../src/lib/skill.js'
+import { placeSkillFile, SKILL_SNIPPET, PROJECT_SKILL_SNIPPET } from '../src/lib/skill.js'
 
 let tmpDir: string
 
@@ -69,5 +69,17 @@ describe('SKILL_SNIPPET', () => {
     expect(SKILL_SNIPPET).toContain('update_brain')
     expect(SKILL_SNIPPET).toContain('append_brain')
     expect(SKILL_SNIPPET).toContain('githubusercontent.com/M-Flat-Inc/piut')
+  })
+})
+
+describe('PROJECT_SKILL_SNIPPET', () => {
+  it('references local .piut/skill.md instead of GitHub URL', () => {
+    expect(PROJECT_SKILL_SNIPPET).toContain('p\u0131ut Context')
+    expect(PROJECT_SKILL_SNIPPET).toContain('.piut/skill.md')
+    expect(PROJECT_SKILL_SNIPPET).toContain('get_context')
+    expect(PROJECT_SKILL_SNIPPET).toContain('soul')
+    expect(PROJECT_SKILL_SNIPPET).toContain('update_brain')
+    expect(PROJECT_SKILL_SNIPPET).toContain('append_brain')
+    expect(PROJECT_SKILL_SNIPPET).not.toContain('githubusercontent.com')
   })
 })

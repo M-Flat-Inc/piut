@@ -5,8 +5,11 @@ import chalk from 'chalk'
 import { scanForProjects } from '../lib/brain-scanner.js'
 import { banner, brand, success, dim, warning } from '../lib/ui.js'
 import { resolveApiKeyWithResult } from '../lib/auth.js'
-import { SKILL_SNIPPET } from '../lib/skill.js'
+import { PROJECT_SKILL_SNIPPET } from '../lib/skill.js'
 import { expandPath } from '../lib/paths.js'
+import { writePiutConfig, writePiutSkill, ensureGitignored } from '../lib/piut-dir.js'
+import { mergeConfig } from '../lib/config.js'
+import { TOOLS } from '../lib/tools.js'
 import type { ProjectInfo } from '../types.js'
 
 interface ConnectOptions {
@@ -67,7 +70,7 @@ const RULE_FILES: RuleFileConfig[] = [
 
 const DEDICATED_FILE_CONTENT = `## p\u0131ut Context
 This project uses p\u0131ut for persistent personal context.
-Skill reference: https://raw.githubusercontent.com/M-Flat-Inc/piut/main/skill.md
+Full skill reference: .piut/skill.md
 
 Always call \`get_context\` at the start of every conversation.
 Read the \`soul\` section first \u2014 it contains behavioral instructions.
@@ -75,7 +78,7 @@ Use \`update_brain\` for substantial new info, \`append_brain\` for quick notes.
 `
 
 const APPEND_SECTION = `\n\n## p\u0131ut Context
-Skill reference: https://raw.githubusercontent.com/M-Flat-Inc/piut/main/skill.md
+Full skill reference: .piut/skill.md
 Always call \`get_context\` at the start of every conversation to load personal context.
 `
 
@@ -99,7 +102,23 @@ interface ConnectAction {
 export async function connectCommand(options: ConnectOptions): Promise<void> {
   banner()
 
-  await resolveApiKeyWithResult(options.key)
+  const { apiKey, slug, serverUrl, status } = await resolveApiKeyWithResult(options.key)
+
+  // Deploy guard — brain must be published for connect to be useful
+  if (status === 'no_brain') {
+    console.log()
+    console.log(warning('  You haven\u2019t built a brain yet.'))
+    console.log(dim('  Run ') + brand('piut build') + dim(' first, then ') + brand('piut deploy') + dim('.'))
+    console.log()
+    return
+  }
+  if (status === 'unpublished') {
+    console.log()
+    console.log(warning('  Your brain is built but not deployed yet.'))
+    console.log(dim('  Run ') + brand('piut deploy') + dim(' to publish your MCP server, then re-run connect.'))
+    console.log()
+    return
+  }
 
   // Determine scan folders
   let scanFolders: string[] | undefined
@@ -195,7 +214,6 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
     projectChoices.push({
       name: `${projectName} ${dim(`(${desc})`)}`,
       value: projectPath,
-      checked: true,
     })
   }
 
@@ -218,17 +236,36 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
   // Apply
   console.log()
   let connected = 0
+  const copilotTool = TOOLS.find(t => t.id === 'copilot')
 
   for (const projectPath of selectedPaths) {
     const projectActions = byProject.get(projectPath) || []
     const projectName = path.basename(projectPath)
+
+    // Create .piut/ directory with credentials and skill file
+    writePiutConfig(projectPath, { slug, apiKey, serverUrl })
+    await writePiutSkill(projectPath, slug, apiKey)
+    ensureGitignored(projectPath)
+    console.log(success(`  ✓ ${projectName}/.piut/`) + dim(' — credentials + skill'))
+
+    // Write Copilot project-local MCP config if applicable
+    if (copilotTool) {
+      const hasCopilot = fs.existsSync(path.join(projectPath, '.github', 'copilot-instructions.md'))
+        || fs.existsSync(path.join(projectPath, '.github'))
+      if (hasCopilot) {
+        const vscodeMcpPath = path.join(projectPath, '.vscode', 'mcp.json')
+        const serverConfig = copilotTool.generateConfig(slug, apiKey)
+        mergeConfig(vscodeMcpPath, copilotTool.configKey, serverConfig)
+        console.log(success(`  ✓ ${projectName}/.vscode/mcp.json`) + dim(' — Copilot MCP'))
+      }
+    }
 
     for (const action of projectActions) {
       if (action.action === 'create') {
         // For dedicated files (cursor, windsurf, zed), create with full content
         // For CLAUDE.md that doesn't exist, also create
         const isAppendType = RULE_FILES.find(r => r.filePath === action.filePath)?.strategy === 'append'
-        const content = isAppendType ? SKILL_SNIPPET + '\n' : DEDICATED_FILE_CONTENT
+        const content = isAppendType ? PROJECT_SKILL_SNIPPET + '\n' : DEDICATED_FILE_CONTENT
 
         fs.mkdirSync(path.dirname(action.absPath), { recursive: true })
         fs.writeFileSync(action.absPath, content, 'utf-8')
@@ -243,6 +280,6 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
   }
 
   console.log()
-  console.log(success(`  Done. ${connected} file(s) updated across ${selectedPaths.length} project(s).`))
+  console.log(success(`  Done. ${selectedPaths.length} project(s) connected.`))
   console.log()
 }

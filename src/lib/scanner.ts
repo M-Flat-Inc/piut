@@ -10,16 +10,19 @@ const KNOWN_FILES = [
   'CLAUDE.md',
   '.claude/MEMORY.md',
   '.claude/settings.json',
+  '.claude/rules/*.md',
   'AGENTS.md',
   '.cursorrules',
-  '.windsurfrules',
-  '.github/copilot-instructions.md',
   '.cursor/rules/*.md',
   '.cursor/rules/*.mdc',
+  '.windsurfrules',
   '.windsurf/rules/*.md',
-  '.claude/rules/*.md',
+  '.rules',
+  '.clinerules',
+  '.github/copilot-instructions.md',
+  '.github/instructions/*.instructions.md',
   'CONVENTIONS.md',
-  '.zed/rules.md',
+  '.amazonq/rules/*.md',
 ]
 
 /** Global file paths to scan (in home directory) */
@@ -89,9 +92,10 @@ function categorizeFile(filePath: string): string {
   if (lower.includes('.claude/') || lower.includes('claude.md')) return 'Claude Code'
   if (lower.includes('.cursor/') || lower.includes('.cursorrules')) return 'Cursor Rules'
   if (lower.includes('.windsurf/') || lower.includes('.windsurfrules')) return 'Windsurf Rules'
-  if (lower.includes('.github/copilot')) return 'VS Code / Copilot'
-  if (lower.includes('.aws/amazonq')) return 'Amazon Q'
-  if (lower.includes('.zed/')) return 'Zed'
+  if (lower.includes('.github/copilot') || lower.includes('.github/instructions')) return 'VS Code / Copilot'
+  if (lower.includes('.amazonq/') || lower.includes('conventions.md')) return 'Amazon Q'
+  if (lower.endsWith('.rules') || lower.includes('.zed/')) return 'Zed'
+  if (lower.includes('.clinerules')) return 'Cline'
   if (lower.includes('.openclaw/')) return 'OpenClaw'
   return 'Custom'
 }

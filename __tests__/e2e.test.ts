@@ -82,12 +82,42 @@ beforeAll(async () => {
               slug: 'testuser',
               displayName: 'Test User',
               serverUrl: 'https://piut.com/api/mcp/testuser',
+              planType: 'starter',
+              status: 'active',
+              _contractVersion: '2.1.0',
+            })
+          )
+        } else if (auth === 'Bearer pb_no_brain_key') {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(
+            JSON.stringify({
+              slug: '',
+              displayName: 'No Brain User',
+              serverUrl: '',
+              planType: 'starter',
+              status: 'no_brain',
+              _contractVersion: '2.1.0',
+            })
+          )
+        } else if (auth === 'Bearer pb_unpublished_key') {
+          res.writeHead(200, { 'Content-Type': 'application/json' })
+          res.end(
+            JSON.stringify({
+              slug: 'unpubuser',
+              displayName: 'Unpublished User',
+              serverUrl: 'https://piut.com/api/mcp/unpubuser',
+              planType: 'starter',
+              status: 'unpublished',
+              _contractVersion: '2.1.0',
             })
           )
         } else {
           res.writeHead(401, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ error: 'Invalid or revoked API key' }))
         }
+      } else if (req.url === '/skill.md') {
+        res.writeHead(200, { 'Content-Type': 'text/markdown' })
+        res.end('# pıut Skill\n\nEndpoint: https://piut.com/api/mcp/{{slug}}\nAuth: Bearer {{key}}\n\nAlways call `get_context` first.\n')
       } else if (req.url === '/api/cli/build-brain' && req.method === 'POST') {
         if (auth !== 'Bearer pb_valid_test_key') {
           res.writeHead(401, { 'Content-Type': 'application/json' })
@@ -550,12 +580,11 @@ describe('deploy command', () => {
     const { stdout, exitCode } = runSync(['deploy', '--help'])
     expect(exitCode).toBe(0)
     expect(stdout).toContain('--key')
-    expect(stdout).toContain('--yes')
   })
 
-  it('deploys brain with --yes flag', async () => {
+  it('deploys brain', async () => {
     const { stdout, exitCode } = await runAsync(
-      ['deploy', '--key', 'pb_valid_test_key', '--yes'],
+      ['deploy', '--key', 'pb_valid_test_key'],
       { env: apiEnv() }
     )
     expect(exitCode).toBe(0)
@@ -565,7 +594,7 @@ describe('deploy command', () => {
 
   it('fails with invalid key', async () => {
     const { stdout, exitCode } = await runAsync(
-      ['deploy', '--key', 'pb_invalid_key', '--yes'],
+      ['deploy', '--key', 'pb_invalid_key'],
       { env: apiEnv() }
     )
     expect(exitCode).not.toBe(0)
@@ -584,7 +613,7 @@ describe('connect command', () => {
     expect(stdout).toContain('--folders')
   })
 
-  it('connects a project with CLAUDE.md', async () => {
+  it('connects a project with CLAUDE.md and .piut/', async () => {
     // Create a project with .git
     const projectDir = path.join(tmpHome, 'Projects', 'connect-test')
     fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
@@ -595,13 +624,33 @@ describe('connect command', () => {
       { env: apiEnv() }
     )
     expect(exitCode).toBe(0)
-    expect(stdout).toContain('file(s) updated')
+    expect(stdout).toContain('project(s) connected')
 
-    // CLAUDE.md should have been created
+    // CLAUDE.md should have been created with local skill reference
     const claudeMd = path.join(projectDir, 'CLAUDE.md')
     expect(fs.existsSync(claudeMd)).toBe(true)
     const content = fs.readFileSync(claudeMd, 'utf-8')
     expect(content).toContain('get_context')
+    expect(content).toContain('.piut/skill.md')
+
+    // .piut/ should have been created with config and skill
+    const piutConfig = path.join(projectDir, '.piut', 'config.json')
+    expect(fs.existsSync(piutConfig)).toBe(true)
+    const config = JSON.parse(fs.readFileSync(piutConfig, 'utf-8'))
+    expect(config.slug).toBe('testuser')
+    expect(config.apiKey).toBe('pb_valid_test_key')
+
+    const piutSkill = path.join(projectDir, '.piut', 'skill.md')
+    expect(fs.existsSync(piutSkill)).toBe(true)
+    const skillContent = fs.readFileSync(piutSkill, 'utf-8')
+    expect(skillContent).toContain('testuser')
+    expect(skillContent).not.toContain('{{slug}}')
+
+    // .gitignore should include .piut/
+    const gitignore = path.join(projectDir, '.gitignore')
+    expect(fs.existsSync(gitignore)).toBe(true)
+    const gitignoreContent = fs.readFileSync(gitignore, 'utf-8')
+    expect(gitignoreContent).toContain('.piut/')
   })
 
   it('connects a project with .cursor directory', async () => {
@@ -647,6 +696,55 @@ describe('connect command', () => {
     )
     expect(exitCode).toBe(0)
     expect(stdout).toContain('No projects found')
+  })
+
+  it('blocks connect when brain not built', async () => {
+    const projectDir = path.join(tmpHome, 'Projects', 'guard-test')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+
+    const { stdout, exitCode } = await runAsync(
+      ['connect', '--key', 'pb_no_brain_key', '--yes', '--folders', path.join(tmpHome, 'Projects')],
+      { env: apiEnv() }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('haven\u2019t built a brain')
+
+    // No CLAUDE.md should have been created
+    expect(fs.existsSync(path.join(projectDir, 'CLAUDE.md'))).toBe(false)
+  })
+
+  it('blocks connect when brain not deployed', async () => {
+    const projectDir = path.join(tmpHome, 'Projects', 'unpub-test')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+
+    const { stdout, exitCode } = await runAsync(
+      ['connect', '--key', 'pb_unpublished_key', '--yes', '--folders', path.join(tmpHome, 'Projects')],
+      { env: apiEnv() }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('not deployed yet')
+
+    expect(fs.existsSync(path.join(projectDir, 'CLAUDE.md'))).toBe(false)
+  })
+
+  it('writes Copilot .vscode/mcp.json for projects with .github/', async () => {
+    const projectDir = path.join(tmpHome, 'Projects', 'copilot-test')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.mkdirSync(path.join(projectDir, '.github'), { recursive: true })
+    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'copilot-test' }))
+
+    const { stdout, exitCode } = await runAsync(
+      ['connect', '--key', 'pb_valid_test_key', '--yes', '--folders', path.join(tmpHome, 'Projects')],
+      { env: apiEnv() }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('Copilot MCP')
+
+    const vscodeMcp = path.join(projectDir, '.vscode', 'mcp.json')
+    expect(fs.existsSync(vscodeMcp)).toBe(true)
+    const config = JSON.parse(fs.readFileSync(vscodeMcp, 'utf-8'))
+    expect(config.servers['piut-context']).toBeDefined()
+    expect(config.servers['piut-context'].url).toContain('testuser')
   })
 })
 
@@ -716,5 +814,59 @@ describe('disconnect command', () => {
     )
     expect(exitCode).toBe(0)
     expect(stdout).toContain('No connected projects')
+  })
+
+  it('removes .piut/ directory on disconnect', async () => {
+    const projectDir = path.join(tmpHome, 'Projects', 'piut-dir-test')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'piut-dir-test' }))
+
+    // Create .piut/ directory as connect would
+    fs.mkdirSync(path.join(projectDir, '.piut'), { recursive: true })
+    fs.writeFileSync(
+      path.join(projectDir, '.piut', 'config.json'),
+      JSON.stringify({ slug: 'testuser', apiKey: 'pb_test', serverUrl: 'https://piut.com/api/mcp/testuser' })
+    )
+    fs.writeFileSync(path.join(projectDir, '.piut', 'skill.md'), '# skill')
+
+    const { stdout, exitCode } = await runAsync(
+      ['disconnect', '--yes', '--folders', path.join(tmpHome, 'Projects')],
+      { env: {} }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('.piut/')
+    expect(stdout).toContain('removed')
+
+    expect(fs.existsSync(path.join(projectDir, '.piut'))).toBe(false)
+  })
+
+  it('removes Copilot piut-context from .vscode/mcp.json on disconnect', async () => {
+    const projectDir = path.join(tmpHome, 'Projects', 'copilot-disconnect')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'copilot-disconnect' }))
+
+    // Create .vscode/mcp.json with piut-context
+    fs.mkdirSync(path.join(projectDir, '.vscode'), { recursive: true })
+    fs.writeFileSync(
+      path.join(projectDir, '.vscode', 'mcp.json'),
+      JSON.stringify({
+        servers: {
+          'piut-context': { type: 'http', url: 'https://piut.com/api/mcp/testuser' },
+          'other-server': { url: 'http://other.com' },
+        },
+      })
+    )
+
+    const { stdout, exitCode } = await runAsync(
+      ['disconnect', '--yes', '--folders', path.join(tmpHome, 'Projects')],
+      { env: {} }
+    )
+    expect(exitCode).toBe(0)
+    expect(stdout).toContain('piut-context removed')
+
+    // other-server should still be there
+    const config = JSON.parse(fs.readFileSync(path.join(projectDir, '.vscode', 'mcp.json'), 'utf-8'))
+    expect(config.servers['piut-context']).toBeUndefined()
+    expect(config.servers['other-server']).toBeDefined()
   })
 })

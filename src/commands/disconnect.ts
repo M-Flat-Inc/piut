@@ -2,8 +2,10 @@ import fs from 'fs'
 import path from 'path'
 import { checkbox, confirm } from '@inquirer/prompts'
 import { scanForProjects } from '../lib/brain-scanner.js'
-import { banner, brand, success, dim, warning } from '../lib/ui.js'
+import { banner, success, dim, warning } from '../lib/ui.js'
 import { expandPath } from '../lib/paths.js'
+import { removePiutDir, hasPiutDir } from '../lib/piut-dir.js'
+import { isPiutConfigured, removeFromConfig } from '../lib/config.js'
 
 interface DisconnectOptions {
   yes?: boolean
@@ -29,7 +31,7 @@ interface DisconnectAction {
   projectName: string
   filePath: string
   absPath: string
-  action: 'delete' | 'remove-section'
+  action: 'delete' | 'remove-section' | 'remove-dir' | 'remove-mcp'
 }
 
 function hasPiutReference(filePath: string): boolean {
@@ -114,6 +116,29 @@ export async function disconnectCommand(options: DisconnectOptions): Promise<voi
         })
       }
     }
+
+    // Check .piut/ directory
+    if (hasPiutDir(project.path)) {
+      actions.push({
+        projectPath: project.path,
+        projectName,
+        filePath: '.piut/',
+        absPath: path.join(project.path, '.piut'),
+        action: 'remove-dir',
+      })
+    }
+
+    // Check .vscode/mcp.json for Copilot MCP config
+    const vscodeMcpPath = path.join(project.path, '.vscode', 'mcp.json')
+    if (fs.existsSync(vscodeMcpPath) && isPiutConfigured(vscodeMcpPath, 'servers')) {
+      actions.push({
+        projectPath: project.path,
+        projectName,
+        filePath: '.vscode/mcp.json',
+        absPath: vscodeMcpPath,
+        action: 'remove-mcp',
+      })
+    }
   }
 
   if (actions.length === 0) {
@@ -137,7 +162,6 @@ export async function disconnectCommand(options: DisconnectOptions): Promise<voi
     return {
       name: `${name} ${dim(`(${files})`)}`,
       value: projectPath,
-      checked: true,
     }
   })
 
@@ -178,6 +202,19 @@ export async function disconnectCommand(options: DisconnectOptions): Promise<voi
           disconnected++
         } catch {
           console.log(warning(`  ✗ ${projectName}/${action.filePath}`) + dim(' — could not delete'))
+        }
+      } else if (action.action === 'remove-dir') {
+        if (removePiutDir(action.projectPath)) {
+          console.log(success(`  ✓ ${projectName}/${action.filePath}`) + dim(' — removed'))
+          disconnected++
+        }
+      } else if (action.action === 'remove-mcp') {
+        try {
+          removeFromConfig(action.absPath, 'servers')
+          console.log(success(`  ✓ ${projectName}/${action.filePath}`) + dim(' — piut-context removed'))
+          disconnected++
+        } catch {
+          console.log(warning(`  ✗ ${projectName}/${action.filePath}`) + dim(' — could not update'))
         }
       } else {
         const removed = removePiutSection(action.absPath)

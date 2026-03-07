@@ -3,12 +3,14 @@ import path from 'path'
 import { execSync } from 'child_process'
 import { password, confirm, checkbox } from '@inquirer/prompts'
 import chalk from 'chalk'
-import { validateKey } from '../lib/api.js'
+import { validateKey, pingMcp } from '../lib/api.js'
 import { TOOLS } from '../lib/tools.js'
 import { resolveConfigPaths } from '../lib/paths.js'
 import { mergeConfig, isPiutConfigured } from '../lib/config.js'
 import { placeSkillFile } from '../lib/skill.js'
+import { writePiutConfig, writePiutSkill, ensureGitignored } from '../lib/piut-dir.js'
 import { banner, brand, success, warning, dim, toolLine } from '../lib/ui.js'
+import { CliError } from '../types.js'
 import type { DetectedTool } from '../types.js'
 
 interface SetupOptions {
@@ -27,7 +29,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
   if (!apiKey) {
     if (options.yes) {
       console.log(chalk.red('  ✗ --key is required when using --yes'))
-      process.exit(1)
+      throw new CliError('--key is required when using --yes')
     }
     apiKey = await password({
       message: 'Enter your pıut API key:',
@@ -44,7 +46,7 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
   } catch (err: unknown) {
     console.log(chalk.red(`  ✗ ${(err as Error).message}`))
     console.log(dim('  Get a key at https://piut.com/dashboard/keys'))
-    process.exit(1)
+    throw new CliError((err as Error).message)
   }
 
   const { slug, displayName, status } = validationResult
@@ -198,7 +200,31 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     }
   }
 
-  // 7. Summary
+  // 7. Create .piut/ in current project if applicable
+  if (configured.length > 0) {
+    const cwd = process.cwd()
+    const isProject = fs.existsSync(path.join(cwd, '.git')) || fs.existsSync(path.join(cwd, 'package.json'))
+    if (isProject) {
+      const { serverUrl } = validationResult
+      writePiutConfig(cwd, { slug, apiKey, serverUrl })
+      await writePiutSkill(cwd, slug, apiKey)
+      ensureGitignored(cwd)
+      console.log()
+      console.log(dim('  Created .piut/ in current project'))
+    }
+  }
+
+  // 8. Register connections by pinging the MCP endpoint for each configured tool
+  if (configured.length > 0) {
+    const { serverUrl } = validationResult
+    console.log()
+    console.log(dim('  Registering connections...'))
+    await Promise.all(
+      configured.map(toolName => pingMcp(serverUrl, apiKey, toolName))
+    )
+  }
+
+  // 9. Summary
   console.log()
   console.log(brand.bold('  Setup complete!'))
   if (configured.length > 0) {
