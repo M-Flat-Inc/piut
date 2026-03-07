@@ -13,7 +13,7 @@ import { interactiveMenu } from './commands/interactive.js'
 import { checkForUpdate } from './lib/update-check.js'
 import { CliError } from './types.js'
 
-const VERSION = '3.4.0'
+const VERSION = '3.5.0'
 
 /**
  * Wrap a command action so that CliError (thrown instead of process.exit(1)
