@@ -551,7 +551,7 @@ describe('build command', () => {
     )
 
     const { stdout, exitCode } = await runAsync(
-      ['build', '--key', 'pb_valid_test_key', '--no-publish', '--folders', path.join(tmpHome, 'Projects')],
+      ['build', '--key', 'pb_valid_test_key', '--no-publish', '--yes', '--folders', path.join(tmpHome, 'Projects')],
       { env: apiEnv() }
     )
     expect(exitCode).toBe(0)
@@ -569,7 +569,7 @@ describe('build command', () => {
       { env: apiEnv() }
     )
     expect(exitCode).toBe(0)
-    expect(stdout).toContain('No projects or config files found')
+    expect(stdout).toContain('No parseable files found')
   })
 })
 

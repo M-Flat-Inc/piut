@@ -4,6 +4,8 @@ import { TOOLS } from '../lib/tools.js'
 import { resolveConfigPaths } from '../lib/paths.js'
 import { isPiutConfigured, removeFromConfig } from '../lib/config.js'
 import { banner, success, dim, warning, toolLine } from '../lib/ui.js'
+import { readStore } from '../lib/store.js'
+import { deleteConnections } from '../lib/api.js'
 
 export async function removeCommand(): Promise<void> {
   banner()
@@ -49,13 +51,21 @@ export async function removeCommand(): Promise<void> {
   if (!proceed) return
 
   console.log()
+  const removedNames: string[] = []
   for (const { tool, configPath } of selected) {
     const removed = removeFromConfig(configPath, tool.configKey)
     if (removed) {
+      removedNames.push(tool.name)
       toolLine(tool.name, success('removed'), '\u2714')
     } else {
       toolLine(tool.name, warning('not found'), '\u00d7')
     }
+  }
+
+  // Clear server-side connection records (best-effort)
+  const store = readStore()
+  if (store.apiKey && removedNames.length > 0) {
+    deleteConnections(store.apiKey, removedNames).catch(() => {})
   }
 
   console.log()

@@ -1,6 +1,6 @@
 {
   "name": "@piut/cli",
-  "version": "3.5.1",
+  "version": "3.6.0",
   "description": "Build your AI brain instantly. Deploy it as an MCP server. Connect it to every project.",
   "type": "module",
   "bin": {
@@ -38,10 +38,14 @@
   },
   "homepage": "https://piut.com",
   "dependencies": {
+    "@iarna/rtf-to-html": "^1.1.0",
     "@inquirer/prompts": "^7.0.0",
     "chalk": "^5.4.0",
     "chokidar": "^4.0.3",
-    "commander": "^13.0.0"
+    "commander": "^13.0.0",
+    "jszip": "^3.10.1",
+    "mammoth": "^1.11.0",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

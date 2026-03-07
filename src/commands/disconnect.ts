@@ -15,14 +15,14 @@ interface DisconnectOptions {
 }
 
 /** Files that piut connect creates as dedicated files (can be deleted entirely) */
-const DEDICATED_FILES = new Set([
+export const DEDICATED_FILES = new Set([
   '.cursor/rules/piut.mdc',
   '.windsurf/rules/piut.md',
   '.zed/rules.md',
 ])
 
 /** Files where piut appends a section (remove the section, keep the rest) */
-const APPEND_FILES = [
+export const APPEND_FILES = [
   'CLAUDE.md',
   '.github/copilot-instructions.md',
   'CONVENTIONS.md',
@@ -45,7 +45,7 @@ function hasPiutReference(filePath: string): boolean {
   }
 }
 
-function removePiutSection(filePath: string): boolean {
+export function removePiutSection(filePath: string): boolean {
   try {
     let content = fs.readFileSync(filePath, 'utf-8')
 

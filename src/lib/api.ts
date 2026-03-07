@@ -1,6 +1,6 @@
 import os from 'os'
 import crypto from 'crypto'
-import type { ValidateResponse, BrainSections, BuildBrainInput } from '../types.js'
+import type { ValidateResponse, LoginResponse, BrainSections, BuildBrainInput } from '../types.js'
 
 const API_BASE = process.env.PIUT_API_BASE || 'https://piut.com'
 
@@ -12,6 +12,21 @@ export async function validateKey(key: string): Promise<ValidateResponse> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: 'Unknown error' }))
     throw new Error(body.error || `Validation failed (HTTP ${res.status})`)
+  }
+
+  return res.json()
+}
+
+export async function loginWithEmail(email: string, password: string): Promise<LoginResponse> {
+  const res = await fetch(`${API_BASE}/api/cli/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Login failed (HTTP ${res.status})`)
   }
 
   return res.json()
@@ -281,6 +296,64 @@ export async function unregisterProject(
     const body = await res.json().catch(() => ({ error: 'Unknown error' }))
     throw new Error(body.error || `Unregister project failed (HTTP ${res.status})`)
   }
+}
+
+export async function deleteConnections(key: string, toolNames: string[]): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/api/mcp/connections`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${key}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ toolNames }),
+    })
+  } catch {
+    // Best-effort — don't fail if server is unreachable
+  }
+}
+
+/**
+ * Call the MCP endpoint's update_brain tool to merge new scan data into existing brain.
+ * This is a merge update — it preserves existing brain content and integrates new info.
+ */
+export async function resyncBrain(
+  serverUrl: string,
+  key: string,
+  content: string,
+): Promise<{ summary: string }> {
+  const res = await fetch(serverUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'update_brain',
+        arguments: { content },
+      },
+    }),
+  })
+
+  if (!res.ok) {
+    throw new Error(`Resync failed (HTTP ${res.status})`)
+  }
+
+  const data = await res.json()
+  if (data.error) {
+    throw new Error(data.error.message || 'Resync failed')
+  }
+
+  // Extract text from MCP tool result
+  const resultContent = data.result?.content
+  const text = Array.isArray(resultContent) && resultContent[0]?.text
+    ? resultContent[0].text
+    : 'Brain updated'
+  return { summary: text }
 }
 
 export async function unpublishServer(key: string): Promise<{ published: boolean }> {

@@ -6,6 +6,7 @@ import { buildCommand } from './commands/build.js'
 import { deployCommand } from './commands/deploy.js'
 import { connectCommand } from './commands/connect.js'
 import { disconnectCommand } from './commands/disconnect.js'
+import { loginCommand } from './commands/login.js'
 import { logoutCommand } from './commands/logout.js'
 import { updateCommand } from './commands/update.js'
 import { doctorCommand } from './commands/doctor.js'
@@ -13,7 +14,7 @@ import { interactiveMenu } from './commands/interactive.js'
 import { checkForUpdate } from './lib/update-check.js'
 import { CliError } from './types.js'
 
-const VERSION = '3.5.1'
+const VERSION = '3.6.0'
 
 /**
  * Wrap a command action so that CliError (thrown instead of process.exit(1)
@@ -93,6 +94,11 @@ program
   .command('remove')
   .description('Remove all pıut configurations')
   .action(withExit(removeCommand))
+
+program
+  .command('login')
+  .description('Authenticate with pıut (email, browser, or API key)')
+  .action(withExit(loginCommand))
 
 program
   .command('logout')

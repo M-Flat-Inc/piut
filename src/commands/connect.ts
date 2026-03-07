@@ -19,8 +19,8 @@ interface ConnectOptions {
   folders?: string
 }
 
-/** Tool-specific rule file configurations */
-interface RuleFileConfig {
+/** Tool-specific rule file configurations (exported for reuse in interactive menu) */
+export interface RuleFileConfig {
   tool: string
   /** Path relative to project root */
   filePath: string
@@ -30,7 +30,7 @@ interface RuleFileConfig {
   detect: (project: ProjectInfo) => boolean
 }
 
-const RULE_FILES: RuleFileConfig[] = [
+export const RULE_FILES: RuleFileConfig[] = [
   {
     tool: 'Claude Code',
     filePath: 'CLAUDE.md',
@@ -69,7 +69,7 @@ const RULE_FILES: RuleFileConfig[] = [
   },
 ]
 
-const DEDICATED_FILE_CONTENT = `## p\u0131ut Context (MCP Server: piut-context)
+export const DEDICATED_FILE_CONTENT = `## p\u0131ut Context (MCP Server: piut-context)
 
 This project uses p\u0131ut for persistent personal context via MCP (Model Context Protocol).
 p\u0131ut provides MCP tools \u2014 do NOT read local .piut/ files directly. Use the MCP tools.
@@ -91,7 +91,7 @@ p\u0131ut provides MCP tools \u2014 do NOT read local .piut/ files directly. Use
 Full skill reference: .piut/skill.md
 `
 
-const APPEND_SECTION = `\n\n## p\u0131ut Context (MCP Server: piut-context)
+export const APPEND_SECTION = `\n\n## p\u0131ut Context (MCP Server: piut-context)
 
 p\u0131ut provides MCP tools for persistent personal context. Do NOT read local .piut/ files.
 Available tools: \`get_context\`, \`get_section\`, \`search_brain\`, \`append_brain\`, \`update_brain\`, \`prompt_brain\`
@@ -99,7 +99,7 @@ Always call \`get_context\` at the start of every conversation to load personal 
 Full skill reference: .piut/skill.md
 `
 
-function hasPiutReference(filePath: string): boolean {
+export function hasPiutReference(filePath: string): boolean {
   try {
     const content = fs.readFileSync(filePath, 'utf-8')
     return content.includes('p\u0131ut Context') || content.includes('piut Context')

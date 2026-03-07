@@ -1,18 +1,48 @@
+/**
+ * Filesystem scanner for brain building.
+ * Walks selected folders, finds parseable files, extracts text,
+ * and groups results by folder for the review step.
+ */
+
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import { canParse, isAiConfigFile, AI_CONFIG_FILENAMES, getFileCategory } from './file-types.js'
+import { extractTextFromFile } from './file-parsers.js'
+import type { ParsedFile } from './file-parsers.js'
+import { groupFilesByFolder, displayPath, getDefaultScanDirs } from './folder-tree.js'
+import type { FolderScanResult } from './folder-tree.js'
 import type { BuildBrainInput, ProjectInfo } from '../types.js'
 
+export { getDefaultScanDirs } from './folder-tree.js'
+
+const home = os.homedir()
+
 export interface ScanProgress {
-  phase: 'projects' | 'configs' | 'docs'
+  phase: 'scanning' | 'parsing' | 'projects' | 'configs' | 'docs'
   message: string
+  folder?: string
 }
 
 export type ProgressCallback = (progress: ScanProgress) => void
 
-const home = os.homedir()
+export interface ScanResult {
+  /** All parsed personal documents, grouped by folder */
+  folders: FolderScanResult[]
+  /** AI config files (CLAUDE.md, .cursorrules, etc.) */
+  configFiles: { name: string; content: string }[]
+  /** Detected projects */
+  projects: ProjectInfo[]
+  /** All parsed files (flat) */
+  allFiles: ParsedFile[]
+  totalFiles: number
+  totalBytes: number
+}
 
-/** Directories to skip during scanning */
+// ---------------------------------------------------------------------------
+// Skip lists
+// ---------------------------------------------------------------------------
+
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '__pycache__', '.venv', 'venv',
   'dist', 'build', '.next', '.nuxt', '.output',
@@ -20,74 +50,19 @@ const SKIP_DIRS = new Set([
   '.pnpm-store', 'Caches', 'Cache', '.piut',
 ])
 
-/** Files to read in full for brain building */
-const FULL_READ_FILES = new Set([
-  'README.md', 'CLAUDE.md', '.cursorrules', '.windsurfrules',
-  '.rules', '.clinerules',
-  'AGENTS.md', 'CONVENTIONS.md', 'MEMORY.md', 'SOUL.md',
-  'IDENTITY.md',
-])
-
-/** Config files that contain useful metadata */
-const METADATA_FILES = new Set(['package.json'])
-
-/** Max file size to read (100KB) */
-const MAX_FILE_SIZE = 100 * 1024
-
-/** Max age for "recent" .md files (30 days) */
-const RECENT_DAYS = 30
-
-/** Dot-directories to traverse during project scanning */
 const SCAN_DOT_DIRS = new Set([
   '.claude', '.cursor', '.windsurf', '.github', '.zed', '.amazonq', '.vscode',
 ])
 
 function shouldSkipDir(name: string): boolean {
-  if (name.startsWith('.') && !SCAN_DOT_DIRS.has(name)) {
-    return true
-  }
+  if (name.startsWith('.') && !SCAN_DOT_DIRS.has(name)) return true
   return SKIP_DIRS.has(name)
 }
 
-function isTextFile(name: string): boolean {
-  const ext = path.extname(name).toLowerCase()
-  return ['.md', '.txt', '.json', '.yaml', '.yml', '.toml'].includes(ext)
-}
+// ---------------------------------------------------------------------------
+// Project detection (kept from original for config file collection)
+// ---------------------------------------------------------------------------
 
-function readFileSafe(filePath: string): string | null {
-  try {
-    const stat = fs.statSync(filePath)
-    if (stat.size > MAX_FILE_SIZE) return null
-    if (!stat.isFile()) return null
-    return fs.readFileSync(filePath, 'utf-8')
-  } catch {
-    return null
-  }
-}
-
-/** Get folder tree (names only, max 3 levels deep) */
-function getFolderTree(dir: string, depth = 0, maxDepth = 3): string[] {
-  if (depth >= maxDepth) return []
-  const entries: string[] = []
-
-  try {
-    const items = fs.readdirSync(dir, { withFileTypes: true })
-    for (const item of items) {
-      if (!item.isDirectory()) continue
-      if (shouldSkipDir(item.name)) continue
-
-      const indent = '  '.repeat(depth)
-      entries.push(`${indent}${item.name}/`)
-      entries.push(...getFolderTree(path.join(dir, item.name), depth + 1, maxDepth))
-    }
-  } catch {
-    // Permission denied or other error
-  }
-
-  return entries
-}
-
-/** Check if a directory is a project (has .git, package.json, etc.) */
 function isProject(dirPath: string): boolean {
   return fs.existsSync(path.join(dirPath, '.git')) ||
     fs.existsSync(path.join(dirPath, 'package.json')) ||
@@ -96,7 +71,6 @@ function isProject(dirPath: string): boolean {
     fs.existsSync(path.join(dirPath, 'go.mod'))
 }
 
-/** Build a ProjectInfo from a detected project directory */
 function buildProjectInfo(projectPath: string): ProjectInfo {
   const hasPkgJson = fs.existsSync(path.join(projectPath, 'package.json'))
 
@@ -110,8 +84,8 @@ function buildProjectInfo(projectPath: string): ProjectInfo {
 
   const readmePath = path.join(projectPath, 'README.md')
   if (!description && fs.existsSync(readmePath)) {
-    const content = readFileSafe(readmePath)
-    if (content) {
+    try {
+      const content = fs.readFileSync(readmePath, 'utf-8')
       const lines = content.split('\n')
       let foundHeading = false
       for (const line of lines) {
@@ -121,7 +95,7 @@ function buildProjectInfo(projectPath: string): ProjectInfo {
           break
         }
       }
-    }
+    } catch { /* ignore */ }
   }
 
   return {
@@ -142,10 +116,8 @@ function buildProjectInfo(projectPath: string): ProjectInfo {
   }
 }
 
-/** Max recursion depth for project detection */
 const MAX_PROJECT_DEPTH = 4
 
-/** Detect projects in a directory (looks for git repos, package.json, etc.) */
 function detectProjects(scanDirs: string[], onProgress?: ProgressCallback): ProjectInfo[] {
   const projects: ProjectInfo[] = []
   const seen = new Set<string>()
@@ -166,9 +138,7 @@ function detectProjects(scanDirs: string[], onProgress?: ProgressCallback): Proj
           const info = buildProjectInfo(fullPath)
           projects.push(info)
           onProgress?.({ phase: 'projects', message: `${info.name} (${fullPath.replace(home, '~')})` })
-          // Don't recurse into projects (avoid subpackages/monorepo noise)
         } else {
-          // Not a project — recurse deeper to find nested projects
           walk(fullPath, depth + 1)
         }
       }
@@ -180,11 +150,15 @@ function detectProjects(scanDirs: string[], onProgress?: ProgressCallback): Proj
   for (const dir of scanDirs) {
     walk(dir, 0)
   }
-
   return projects
 }
 
-/** Collect config files from projects (CLAUDE.md, .cursorrules, etc.) */
+// ---------------------------------------------------------------------------
+// Config file collection
+// ---------------------------------------------------------------------------
+
+const MAX_CONFIG_SIZE = 100 * 1024
+
 function collectConfigFiles(projects: ProjectInfo[], onProgress?: ProgressCallback): { name: string; content: string }[] {
   const configs: { name: string; content: string }[] = []
 
@@ -197,172 +171,202 @@ function collectConfigFiles(projects: ProjectInfo[], onProgress?: ProgressCallba
   ]
 
   for (const gp of globalPaths) {
-    const content = readFileSafe(gp)
-    if (content && content.trim()) {
-      const name = `~/${path.relative(home, gp)}`
-      configs.push({ name, content })
-      onProgress?.({ phase: 'configs', message: name })
+    try {
+      const stat = fs.statSync(gp)
+      if (!stat.isFile() || stat.size > MAX_CONFIG_SIZE) continue
+      const content = fs.readFileSync(gp, 'utf-8')
+      if (content.trim()) {
+        const name = `~/${path.relative(home, gp)}`
+        configs.push({ name, content })
+        onProgress?.({ phase: 'configs', message: name })
+      }
+    } catch {
+      // File doesn't exist or permission denied
     }
   }
 
   // Per-project config files
   for (const project of projects) {
-    for (const fileName of FULL_READ_FILES) {
+    for (const fileName of AI_CONFIG_FILENAMES) {
       const filePath = path.join(project.path, fileName)
-      const content = readFileSafe(filePath)
-      if (content && content.trim()) {
-        const name = `${project.name}/${fileName}`
-        configs.push({ name, content })
-        onProgress?.({ phase: 'configs', message: name })
+      try {
+        const stat = fs.statSync(filePath)
+        if (!stat.isFile() || stat.size > MAX_CONFIG_SIZE) continue
+        const content = fs.readFileSync(filePath, 'utf-8')
+        if (content.trim()) {
+          const name = `${project.name}/${fileName}`
+          configs.push({ name, content })
+          onProgress?.({ phase: 'configs', message: name })
+        }
+      } catch {
+        // File doesn't exist
       }
     }
 
     // package.json (just name + description)
     const pkgPath = path.join(project.path, 'package.json')
-    const pkgContent = readFileSafe(pkgPath)
-    if (pkgContent) {
-      try {
-        const pkg = JSON.parse(pkgContent)
+    try {
+      const stat = fs.statSync(pkgPath)
+      if (stat.isFile() && stat.size <= MAX_CONFIG_SIZE) {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
         const summary = JSON.stringify({ name: pkg.name, description: pkg.description }, null, 2)
-        const name = `${project.name}/package.json`
-        configs.push({ name, content: summary })
-        onProgress?.({ phase: 'configs', message: name })
-      } catch { /* ignore */ }
-    }
+        configs.push({ name: `${project.name}/package.json`, content: summary })
+        onProgress?.({ phase: 'configs', message: `${project.name}/package.json` })
+      }
+    } catch { /* ignore */ }
   }
 
   return configs
 }
 
-/** Collect recently modified .md files from projects */
-function collectRecentDocs(projects: ProjectInfo[], onProgress?: ProgressCallback): { name: string; content: string }[] {
-  const docs: { name: string; content: string }[] = []
-  const cutoff = Date.now() - RECENT_DAYS * 24 * 60 * 60 * 1000
+// ---------------------------------------------------------------------------
+// Full filesystem scan for personal documents
+// ---------------------------------------------------------------------------
+
+const MAX_SCAN_DEPTH = 6
+const MAX_FILES = 500
+
+/** Walk directories and collect all parseable files. */
+async function scanFilesInDirs(
+  dirs: string[],
+  onProgress?: ProgressCallback,
+): Promise<ParsedFile[]> {
+  const files: ParsedFile[] = []
   const seen = new Set<string>()
 
-  for (const project of projects) {
+  function walk(dir: string, depth: number): string[] {
+    if (depth > MAX_SCAN_DEPTH) return []
+    const found: string[] = []
+
     try {
-      const items = fs.readdirSync(project.path, { withFileTypes: true })
+      const items = fs.readdirSync(dir, { withFileTypes: true })
       for (const item of items) {
-        if (!item.isFile()) continue
-        if (!item.name.endsWith('.md')) continue
-        if (FULL_READ_FILES.has(item.name)) continue // Already collected as config
-        if (item.name.startsWith('.')) continue
-
-        const filePath = path.join(project.path, item.name)
-        if (seen.has(filePath)) continue
-        seen.add(filePath)
-
-        try {
-          const stat = fs.statSync(filePath)
-          if (stat.mtimeMs < cutoff) continue
-          if (stat.size > MAX_FILE_SIZE) continue
-
-          const content = fs.readFileSync(filePath, 'utf-8')
-          if (content.trim()) {
-            const name = `${project.name}/${item.name}`
-            docs.push({ name, content })
-            onProgress?.({ phase: 'docs', message: name })
+        if (item.isDirectory()) {
+          if (!shouldSkipDir(item.name)) {
+            found.push(...walk(path.join(dir, item.name), depth + 1))
           }
-        } catch { /* ignore */ }
-      }
-    } catch { /* ignore */ }
-  }
-
-  return docs.slice(0, 20) // Cap at 20 recent docs
-}
-
-/** Directories to exclude from the home folder listing */
-const SKIP_HOME_DIRS = new Set([
-  'Library', 'Applications', 'Public', 'Movies', 'Music', 'Pictures',
-  'Templates', '.Trash',
-])
-
-/** Dot-directories to include in home folder listing (AI tool config directories) */
-const INCLUDE_DOT_DIRS = new Set([
-  '.claude', '.cursor', '.windsurf', '.openclaw', '.zed', '.github', '.amazonq',
-])
-
-/** Default scan directories */
-function getDefaultScanDirs(): string[] {
-  const dirs: string[] = []
-
-  // List all visible directories in home, excluding system/media folders
-  try {
-    const entries = fs.readdirSync(home, { withFileTypes: true })
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-      if (entry.name.startsWith('.') && !INCLUDE_DOT_DIRS.has(entry.name)) continue
-      if (SKIP_HOME_DIRS.has(entry.name)) continue
-      dirs.push(path.join(home, entry.name))
-    }
-  } catch {
-    // Permission denied — fall back to home itself
-  }
-
-  // macOS cloud storage via ~/Library/CloudStorage/ (Dropbox, OneDrive, Google Drive, etc.)
-  const cloudStorage = path.join(home, 'Library', 'CloudStorage')
-  try {
-    if (fs.existsSync(cloudStorage) && fs.statSync(cloudStorage).isDirectory()) {
-      const entries = fs.readdirSync(cloudStorage, { withFileTypes: true })
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        const fullPath = path.join(cloudStorage, entry.name)
-        // Avoid duplicates (e.g. Dropbox already found at ~/Dropbox)
-        if (!dirs.includes(fullPath)) {
-          dirs.push(fullPath)
+        } else if (item.isFile()) {
+          if (canParse(item.name) && !isAiConfigFile(item.name)) {
+            const fullPath = path.join(dir, item.name)
+            if (!seen.has(fullPath)) {
+              seen.add(fullPath)
+              found.push(fullPath)
+            }
+          }
         }
       }
+    } catch {
+      // Permission denied
     }
-  } catch {
-    // Permission denied
+
+    return found
   }
 
-  if (dirs.length === 0) {
-    dirs.push(home)
+  // Collect all file paths
+  const allPaths: string[] = []
+  for (const dir of dirs) {
+    onProgress?.({ phase: 'scanning', message: displayPath(dir) })
+    allPaths.push(...walk(dir, 0))
+    if (allPaths.length > MAX_FILES) break
   }
 
-  return dirs
+  // Parse files (async for document formats)
+  const pathsToProcess = allPaths.slice(0, MAX_FILES)
+  for (const filePath of pathsToProcess) {
+    try {
+      const stat = fs.statSync(filePath)
+      onProgress?.({ phase: 'parsing', message: displayPath(filePath) })
+
+      const content = await extractTextFromFile(filePath)
+      if (content && content.trim()) {
+        const category = getFileCategory(filePath)
+        files.push({
+          path: filePath,
+          displayPath: displayPath(filePath),
+          content,
+          format: category === 'document' ? path.extname(filePath).slice(1) : 'text',
+          sizeBytes: stat.size,
+          folder: path.dirname(filePath),
+        })
+      }
+    } catch {
+      // Skip unparseable files
+    }
+  }
+
+  return files
 }
 
-/** Scan filesystem and build a structured summary for brain generation */
-export function scanForBrain(folders?: string[], onProgress?: ProgressCallback): BuildBrainInput {
-  const scanDirs = folders || getDefaultScanDirs()
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
-  // Build folder tree
-  const folderTree: string[] = []
-  for (const dir of scanDirs) {
-    folderTree.push(`${path.basename(dir)}/`)
-    folderTree.push(...getFolderTree(dir, 1))
-  }
+/**
+ * Scan selected folders for all parseable files + detect projects + collect config files.
+ * This is the main entry point for the build command's scan phase.
+ */
+export async function scanFolders(
+  dirs: string[],
+  onProgress?: ProgressCallback,
+): Promise<ScanResult> {
+  // 1. Scan for personal documents (async — parses PDFs, DOCX, etc.)
+  const allFiles = await scanFilesInDirs(dirs, onProgress)
+  const folders = groupFilesByFolder(allFiles)
 
-  // Detect projects
-  const projects = detectProjects(scanDirs, onProgress)
-
-  // Collect config files
+  // 2. Detect projects and collect config files (sync — fast)
+  const projects = detectProjects(dirs, onProgress)
   const configFiles = collectConfigFiles(projects, onProgress)
 
-  // Collect recent documents
-  const recentDocuments = collectRecentDocs(projects, onProgress)
+  const totalFiles = allFiles.length
+  const totalBytes = allFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
+
+  return { folders, configFiles, projects, allFiles, totalFiles, totalBytes }
+}
+
+/**
+ * Build the API input from a scan result, filtered to selected folders.
+ */
+export function buildBrainInput(
+  scanResult: ScanResult,
+  selectedFolderPaths: string[],
+): BuildBrainInput {
+  const selectedSet = new Set(selectedFolderPaths)
+
+  // Filter files to selected folders
+  const selectedFiles = scanResult.allFiles.filter(f => selectedSet.has(f.folder))
+
+  // Build folder tree lines for display
+  const folderTree: string[] = []
+  for (const folder of scanResult.folders) {
+    if (selectedSet.has(folder.path)) {
+      folderTree.push(`${folder.displayPath}/ (${folder.fileCount} files)`)
+    }
+  }
+
+  // Separate personal documents from config-like files
+  const personalDocuments = selectedFiles.map(f => ({
+    name: f.displayPath,
+    content: f.content,
+    format: f.format,
+  }))
 
   return {
     summary: {
       folders: folderTree,
-      projects: projects.map(p => ({
+      projects: scanResult.projects.map(p => ({
         name: p.name,
         path: p.path.replace(home, '~'),
         description: p.description,
       })),
-      configFiles,
-      recentDocuments,
+      configFiles: scanResult.configFiles,
+      recentDocuments: [],
+      personalDocuments,
     },
   }
 }
 
-/** Scan for projects that can be connected (have AI config files or could have them) */
+/** Scan for projects that can be connected (used by connect command). */
 export function scanForProjects(folders?: string[]): ProjectInfo[] {
   const scanDirs = folders || getDefaultScanDirs()
   return detectProjects(scanDirs)
 }
-
-export { getDefaultScanDirs }

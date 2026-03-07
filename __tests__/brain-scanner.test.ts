@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { scanForBrain, scanForProjects, getDefaultScanDirs } from '../src/lib/brain-scanner.js'
+import { scanFolders, buildBrainInput, scanForProjects, getDefaultScanDirs } from '../src/lib/brain-scanner.js'
 
 let tmpHome: string
 let origHome: string
@@ -99,8 +99,8 @@ describe('scanForProjects', () => {
   })
 })
 
-describe('scanForBrain', () => {
-  it('returns structured summary with folders, projects, configFiles, recentDocuments', () => {
+describe('scanFolders', () => {
+  it('returns structured result with folders, projects, configFiles, allFiles', async () => {
     const projectDir = path.join(tmpHome, 'projects', 'test-app')
     fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
     fs.writeFileSync(
@@ -108,35 +108,83 @@ describe('scanForBrain', () => {
       JSON.stringify({ name: 'test-app', description: 'Test application' })
     )
     fs.writeFileSync(path.join(projectDir, 'CLAUDE.md'), '# Claude rules for test-app')
+    fs.writeFileSync(path.join(projectDir, 'notes.md'), '# Some notes about the project')
 
-    const result = scanForBrain([path.join(tmpHome, 'projects')])
+    const result = await scanFolders([path.join(tmpHome, 'projects')])
 
-    expect(result.summary).toBeDefined()
-    expect(result.summary.folders).toBeDefined()
-    expect(result.summary.projects).toHaveLength(1)
-    expect(result.summary.projects[0].name).toBe('test-app')
-    expect(result.summary.configFiles.length).toBeGreaterThanOrEqual(1)
+    expect(result.projects).toHaveLength(1)
+    expect(result.projects[0].name).toBe('test-app')
+    expect(result.configFiles.length).toBeGreaterThanOrEqual(1)
+    expect(result.folders).toBeDefined()
+    expect(result.totalFiles).toBeGreaterThanOrEqual(0)
   })
 
-  it('returns empty summary for directory with no projects', () => {
+  it('returns empty result for directory with no parseable files', async () => {
     const emptyDir = path.join(tmpHome, 'empty')
     fs.mkdirSync(emptyDir, { recursive: true })
 
-    const result = scanForBrain([emptyDir])
-    expect(result.summary.projects).toEqual([])
-    expect(result.summary.folders.length).toBeGreaterThanOrEqual(0)
+    const result = await scanFolders([emptyDir])
+    expect(result.projects).toEqual([])
+    expect(result.allFiles).toEqual([])
+    expect(result.totalFiles).toBe(0)
   })
 
-  it('collects recent .md files as recentDocuments', () => {
-    const projectDir = path.join(tmpHome, 'projects', 'docs-project')
-    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
-    fs.writeFileSync(path.join(projectDir, 'NOTES.md'), '# My Notes\nSome recent notes')
+  it('collects .md files as personal documents', async () => {
+    const docsDir = path.join(tmpHome, 'docs')
+    fs.mkdirSync(docsDir, { recursive: true })
+    fs.writeFileSync(path.join(docsDir, 'NOTES.md'), '# My Notes\nSome recent notes')
 
-    const result = scanForBrain([path.join(tmpHome, 'projects')])
-    const recentDocs = result.summary.recentDocuments
-    const notesDoc = recentDocs.find(d => d.name.includes('NOTES.md'))
-    expect(notesDoc).toBeDefined()
-    expect(notesDoc!.content).toContain('My Notes')
+    const result = await scanFolders([docsDir])
+    const notesFile = result.allFiles.find(f => f.path.includes('NOTES.md'))
+    expect(notesFile).toBeDefined()
+    expect(notesFile!.content).toContain('My Notes')
+  })
+
+  it('skips AI config files from personal documents', async () => {
+    const projectDir = path.join(tmpHome, 'projects', 'my-app')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.writeFileSync(path.join(projectDir, 'CLAUDE.md'), '# Claude rules')
+    fs.writeFileSync(path.join(projectDir, 'readme.md'), '# My App readme')
+
+    const result = await scanFolders([path.join(tmpHome, 'projects')])
+    // CLAUDE.md should be in configFiles, not allFiles (personal docs)
+    const claudeInDocs = result.allFiles.find(f => f.path.includes('CLAUDE.md'))
+    expect(claudeInDocs).toBeUndefined()
+    const claudeInConfigs = result.configFiles.find(c => c.name.includes('CLAUDE.md'))
+    expect(claudeInConfigs).toBeDefined()
+  })
+})
+
+describe('buildBrainInput', () => {
+  it('builds API input from scan result with selected folders', async () => {
+    const docsDir = path.join(tmpHome, 'docs')
+    fs.mkdirSync(docsDir, { recursive: true })
+    fs.writeFileSync(path.join(docsDir, 'resume.md'), '# Resume\nSoftware engineer')
+    fs.writeFileSync(path.join(docsDir, 'notes.txt'), 'Some notes here')
+
+    const result = await scanFolders([docsDir])
+    const input = buildBrainInput(result, [docsDir])
+
+    expect(input.summary).toBeDefined()
+    expect(input.summary.personalDocuments).toBeDefined()
+    expect(input.summary.personalDocuments!.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('filters files by selected folders', async () => {
+    const dir1 = path.join(tmpHome, 'dir1')
+    const dir2 = path.join(tmpHome, 'dir2')
+    fs.mkdirSync(dir1, { recursive: true })
+    fs.mkdirSync(dir2, { recursive: true })
+    fs.writeFileSync(path.join(dir1, 'file1.md'), '# File 1')
+    fs.writeFileSync(path.join(dir2, 'file2.md'), '# File 2')
+
+    const result = await scanFolders([dir1, dir2])
+    // Only select dir1
+    const input = buildBrainInput(result, [dir1])
+
+    const names = (input.summary.personalDocuments || []).map(d => d.name)
+    expect(names.some(n => n.includes('file1'))).toBe(true)
+    expect(names.some(n => n.includes('file2'))).toBe(false)
   })
 })
 

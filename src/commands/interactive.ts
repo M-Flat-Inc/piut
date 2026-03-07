@@ -1,21 +1,27 @@
-import { select, confirm, checkbox, password } from '@inquirer/prompts'
+import { select, confirm, checkbox, Separator } from '@inquirer/prompts'
 import fs from 'fs'
 import path from 'path'
+import { exec } from 'child_process'
+import os from 'os'
 import chalk from 'chalk'
-import { validateKey, unpublishServer, pingMcp, getBrain, publishServer } from '../lib/api.js'
+import { validateKey, unpublishServer, pingMcp, getBrain, publishServer, deleteConnections, resyncBrain, registerProject, unregisterProject, getMachineId } from '../lib/api.js'
 import { readStore, updateStore } from '../lib/store.js'
-import { banner, brand, success, dim, warning, toolLine } from '../lib/ui.js'
+import { promptLogin } from '../lib/auth.js'
+import { banner, brand, success, dim, warning, toolLine, Spinner } from '../lib/ui.js'
 import { buildCommand } from './build.js'
 import { deployCommand } from './deploy.js'
-import { connectCommand } from './connect.js'
-import { disconnectCommand } from './disconnect.js'
 import { statusCommand } from './status.js'
 import { logoutCommand } from './logout.js'
+import { RULE_FILES, hasPiutReference, DEDICATED_FILE_CONTENT, APPEND_SECTION } from './connect.js'
+import { DEDICATED_FILES, APPEND_FILES, removePiutSection } from './disconnect.js'
 import { TOOLS } from '../lib/tools.js'
 import { resolveConfigPaths } from '../lib/paths.js'
 import { isPiutConfigured, mergeConfig, removeFromConfig } from '../lib/config.js'
+import { scanForProjects, scanFolders, buildBrainInput } from '../lib/brain-scanner.js'
+import { writePiutConfig, writePiutSkill, ensureGitignored, hasPiutDir, removePiutDir } from '../lib/piut-dir.js'
+import { PROJECT_SKILL_SNIPPET } from '../lib/skill.js'
 import { CliError } from '../types.js'
-import type { ValidateResponse } from '../types.js'
+import type { ValidateResponse, ProjectInfo } from '../types.js'
 
 interface AuthResult {
   apiKey: string
@@ -24,7 +30,7 @@ interface AuthResult {
 
 async function authenticate(): Promise<AuthResult> {
   const config = readStore()
-  let apiKey = config.apiKey
+  const apiKey = config.apiKey
 
   if (apiKey) {
     // Validate saved key still works
@@ -34,40 +40,30 @@ async function authenticate(): Promise<AuthResult> {
       return { apiKey, validation: result }
     } catch {
       console.log(dim('  Saved key expired. Please re-authenticate.'))
-      apiKey = undefined
     }
   }
 
-  console.log(dim('  Connect to pıut:'))
-  console.log(dim('    > Log in at piut.com'))
-  console.log(dim('    > Enter pıut API key'))
-  console.log()
+  // No saved key or it expired — prompt for auth method
+  const { apiKey: newKey, validation } = await promptLogin()
+  const label = validation.slug
+    ? `${validation.displayName} (${validation.slug})`
+    : validation.displayName
+  console.log(success(`  ✓ Connected as ${label}`))
+  updateStore({ apiKey: newKey })
 
-  apiKey = await password({
-    message: 'Enter your pıut API key:',
-    mask: '*',
-    validate: (v) => v.startsWith('pb_') || 'Key must start with pb_',
-  })
-
-  console.log(dim('  Validating key...'))
-  let result: ValidateResponse
-  try {
-    result = await validateKey(apiKey)
-  } catch (err: unknown) {
-    console.log(chalk.red(`  \u2717 ${(err as Error).message}`))
-    console.log(dim('  Get a key at https://piut.com/dashboard/keys'))
-    process.exit(1)
-  }
-
-  console.log(success(`  \u2713 Connected as ${result.displayName}`))
-  updateStore({ apiKey })
-
-  return { apiKey, validation: result }
+  return { apiKey: newKey, validation }
 }
 
 /** Check if an error is from the user pressing Ctrl+C in a prompt */
 function isPromptCancellation(err: unknown): boolean {
   return !!(err && typeof err === 'object' && 'name' in err && (err as Error).name === 'ExitPromptError')
+}
+
+/** Open a URL in the default browser */
+function openInBrowser(url: string): void {
+  const platform = process.platform
+  const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'start' : 'xdg-open'
+  exec(`${cmd} ${url}`)
 }
 
 export async function interactiveMenu(): Promise<void> {
@@ -130,11 +126,12 @@ export async function interactiveMenu(): Promise<void> {
     try {
       action = await select({
         message: 'What would you like to do?',
+        loop: false,
         choices: [
           {
-            name: hasBrain ? 'Rebuild Brain' : 'Build Brain',
+            name: hasBrain ? 'Resync Brain' : 'Build Brain',
             value: 'build' as const,
-            description: hasBrain ? 'Rebuild your brain from your files' : 'Build your brain from your files',
+            description: hasBrain ? 'Rescan your files and merge updates into your brain' : 'Build your brain from your files',
           },
           {
             name: isDeployed ? 'Undeploy Brain' : 'Deploy Brain',
@@ -143,29 +140,25 @@ export async function interactiveMenu(): Promise<void> {
               ? 'Take your MCP server offline'
               : 'Publish your MCP server (requires paid account)',
           },
+          new Separator(),
           {
             name: 'Connect Tools',
             value: 'connect-tools' as const,
-            description: 'Configure AI tools to use your MCP server',
-            disabled: !isDeployed && '(deploy brain first)',
-          },
-          {
-            name: 'Disconnect Tools',
-            value: 'disconnect-tools' as const,
-            description: 'Remove pıut from AI tool configs',
+            description: 'Manage which AI tools use your MCP server',
             disabled: !isDeployed && '(deploy brain first)',
           },
           {
             name: 'Connect Projects',
             value: 'connect-projects' as const,
-            description: 'Add brain references to project config files',
+            description: 'Manage brain references in project config files',
             disabled: !isDeployed && '(deploy brain first)',
           },
+          new Separator(),
           {
-            name: 'Disconnect Projects',
-            value: 'disconnect-projects' as const,
-            description: 'Remove brain references from project configs',
-            disabled: !isDeployed && '(deploy brain first)',
+            name: 'Edit Brain',
+            value: 'edit-brain' as const,
+            description: 'Open piut.com to edit your brain',
+            disabled: !hasBrain && '(build brain first)',
           },
           {
             name: 'View Brain',
@@ -178,6 +171,7 @@ export async function interactiveMenu(): Promise<void> {
             value: 'status' as const,
             description: 'Show brain, deployment, and connected tools/projects',
           },
+          new Separator(),
           {
             name: 'Logout',
             value: 'logout' as const,
@@ -186,7 +180,7 @@ export async function interactiveMenu(): Promise<void> {
           {
             name: 'Exit',
             value: 'exit' as const,
-            description: 'Quit pıut CLI',
+            description: 'Quit p\u0131ut CLI',
           },
         ],
       })
@@ -201,7 +195,11 @@ export async function interactiveMenu(): Promise<void> {
     try {
       switch (action) {
         case 'build':
-          await buildCommand({ key: apiKey })
+          if (hasBrain) {
+            await handleResyncBrain(apiKey, currentValidation)
+          } else {
+            await buildCommand({ key: apiKey })
+          }
           break
         case 'deploy':
           if (isDeployed) {
@@ -213,14 +211,11 @@ export async function interactiveMenu(): Promise<void> {
         case 'connect-tools':
           await handleConnectTools(apiKey, currentValidation)
           break
-        case 'disconnect-tools':
-          await handleDisconnectTools()
-          break
         case 'connect-projects':
-          await connectCommand({ key: apiKey })
+          await handleManageProjects(apiKey, currentValidation)
           break
-        case 'disconnect-projects':
-          await disconnectCommand({})
+        case 'edit-brain':
+          handleEditBrain()
           break
         case 'view-brain':
           await handleViewBrain(apiKey)
@@ -283,11 +278,15 @@ async function handleUndeploy(apiKey: string): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Connect Tools — unified view (connect + disconnect in one)
+// ---------------------------------------------------------------------------
+
 async function handleConnectTools(apiKey: string, validation: ValidateResponse): Promise<void> {
   const { slug } = validation
 
-  const unconfigured: { tool: (typeof TOOLS)[0]; configPath: string }[] = []
-  const alreadyConnected: string[] = []
+  type DetectedItem = { tool: (typeof TOOLS)[0]; configPath: string; connected: boolean }
+  const detected: DetectedItem[] = []
 
   for (const tool of TOOLS) {
     const paths = resolveConfigPaths(tool.configPaths)
@@ -295,60 +294,80 @@ async function handleConnectTools(apiKey: string, validation: ValidateResponse):
       const exists = fs.existsSync(configPath)
       const parentExists = fs.existsSync(path.dirname(configPath))
       if (exists || parentExists) {
-        if (exists && isPiutConfigured(configPath, tool.configKey)) {
-          alreadyConnected.push(tool.name)
-        } else {
-          unconfigured.push({ tool, configPath })
-        }
+        const connected = exists && isPiutConfigured(configPath, tool.configKey)
+        detected.push({ tool, configPath, connected })
         break
       }
     }
   }
 
-  if (unconfigured.length === 0) {
-    if (alreadyConnected.length > 0) {
-      console.log(dim('  All detected tools are already connected.'))
-    } else {
-      console.log(warning('  No supported AI tools detected.'))
-      console.log(dim('  Supported: Claude Code, Claude Desktop, Cursor, Windsurf, GitHub Copilot, Amazon Q, Zed'))
-    }
+  if (detected.length === 0) {
+    console.log(warning('  No supported AI tools detected.'))
+    console.log(dim('  Supported: Claude Code, Claude Desktop, Cursor, Windsurf, GitHub Copilot, Amazon Q, Zed'))
     console.log()
     return
   }
 
-  if (alreadyConnected.length > 0) {
-    console.log(dim(`  Already connected: ${alreadyConnected.join(', ')}`))
-    console.log()
+  const connectedCount = detected.filter(d => d.connected).length
+  const availableCount = detected.length - connectedCount
+  if (connectedCount > 0 || availableCount > 0) {
+    const parts: string[] = []
+    if (connectedCount > 0) parts.push(`${connectedCount} connected`)
+    if (availableCount > 0) parts.push(`${availableCount} available`)
+    console.log(dim(`  ${parts.join(', ')}`))
   }
+  console.log()
 
-  const choices = unconfigured.map(u => ({
-    name: u.tool.name,
-    value: u,
-    checked: true,
+  const choices = detected.map(d => ({
+    name: `${d.tool.name}${d.connected ? dim(' (connected)') : ''}`,
+    value: d,
+    checked: d.connected,
   }))
 
   const selected = await checkbox({
-    message: 'Select tools to connect:',
+    message: 'Select tools to keep connected (toggle with space):',
     choices,
   })
 
-  if (selected.length === 0) {
-    console.log(dim('  No tools selected.'))
+  // Determine what changed
+  const toConnect = selected.filter(s => !s.connected)
+  const toDisconnect = detected.filter(d => d.connected && !selected.includes(d))
+
+  if (toConnect.length === 0 && toDisconnect.length === 0) {
+    console.log(dim('  No changes.'))
+    console.log()
     return
   }
 
   console.log()
-  for (const { tool, configPath } of selected) {
+
+  // Connect new tools
+  for (const { tool, configPath } of toConnect) {
     const serverConfig = tool.generateConfig(slug, apiKey)
     mergeConfig(configPath, tool.configKey, serverConfig)
     toolLine(tool.name, success('connected'), '\u2714')
   }
 
-  // Register tool connections with the server (fire-and-forget)
-  if (validation.serverUrl) {
+  // Disconnect removed tools
+  const removedNames: string[] = []
+  for (const { tool, configPath } of toDisconnect) {
+    const removed = removeFromConfig(configPath, tool.configKey)
+    if (removed) {
+      removedNames.push(tool.name)
+      toolLine(tool.name, warning('disconnected'), '\u2714')
+    }
+  }
+
+  // Register tool connections (fire-and-forget)
+  if (toConnect.length > 0 && validation.serverUrl) {
     await Promise.all(
-      selected.map(({ tool }) => pingMcp(validation.serverUrl, apiKey, tool.name))
+      toConnect.map(({ tool }) => pingMcp(validation.serverUrl, apiKey, tool.name))
     )
+  }
+
+  // Clear server-side disconnections (best-effort)
+  if (removedNames.length > 0) {
+    deleteConnections(apiKey, removedNames).catch(() => {})
   }
 
   console.log()
@@ -356,60 +375,285 @@ async function handleConnectTools(apiKey: string, validation: ValidateResponse):
   console.log()
 }
 
-async function handleDisconnectTools(): Promise<void> {
-  const configured: { tool: (typeof TOOLS)[0]; configPath: string }[] = []
+// ---------------------------------------------------------------------------
+// Connect Projects — unified view (connect + disconnect in one)
+// ---------------------------------------------------------------------------
 
-  for (const tool of TOOLS) {
-    const paths = resolveConfigPaths(tool.configPaths)
-    for (const configPath of paths) {
-      if (fs.existsSync(configPath) && isPiutConfigured(configPath, tool.configKey)) {
-        configured.push({ tool, configPath })
-        break
-      }
-    }
-  }
+async function handleManageProjects(apiKey: string, validation: ValidateResponse): Promise<void> {
+  const { slug, serverUrl } = validation
 
-  if (configured.length === 0) {
-    console.log(dim('  pıut is not configured in any detected AI tools.'))
+  console.log(dim('  Scanning for projects...'))
+
+  const projects = scanForProjects()
+
+  if (projects.length === 0) {
+    console.log(warning('  No projects found.'))
+    console.log(dim('  Try running from a directory with your projects.'))
     console.log()
     return
   }
 
-  const choices = configured.map(c => ({
-    name: c.tool.name,
-    value: c,
+  // Determine connected status for each project
+  type ProjectItem = { project: ProjectInfo; connected: boolean }
+  const items: ProjectItem[] = projects.map(p => ({
+    project: p,
+    connected: hasPiutDir(p.path),
+  }))
+
+  const connectedCount = items.filter(i => i.connected).length
+  const availableCount = items.length - connectedCount
+  const parts: string[] = []
+  if (connectedCount > 0) parts.push(`${connectedCount} connected`)
+  if (availableCount > 0) parts.push(`${availableCount} available`)
+  console.log(dim(`  ${parts.join(', ')}`))
+  console.log()
+
+  const choices = items.map(i => ({
+    name: `${i.project.name}${i.connected ? dim(' (connected)') : ''}`,
+    value: i,
+    checked: i.connected,
   }))
 
   const selected = await checkbox({
-    message: 'Select tools to disconnect:',
+    message: 'Select projects to keep connected (toggle with space):',
     choices,
   })
 
-  if (selected.length === 0) {
-    console.log(dim('  No tools selected.'))
+  const toConnect = selected.filter(s => !s.connected)
+  const toDisconnect = items.filter(i => i.connected && !selected.includes(i))
+
+  if (toConnect.length === 0 && toDisconnect.length === 0) {
+    console.log(dim('  No changes.'))
+    console.log()
     return
   }
 
-  const proceed = await confirm({
-    message: `Disconnect pıut from ${selected.length} tool(s)?`,
-    default: false,
-  })
-  if (!proceed) return
-
   console.log()
-  for (const { tool, configPath } of selected) {
-    const removed = removeFromConfig(configPath, tool.configKey)
-    if (removed) {
-      toolLine(tool.name, success('disconnected'), '\u2714')
-    } else {
-      toolLine(tool.name, warning('not found'), '\u00d7')
+
+  // --- Connect new projects ---
+  const copilotTool = TOOLS.find(t => t.id === 'copilot')
+
+  for (const { project } of toConnect) {
+    const projectName = path.basename(project.path)
+
+    // Create .piut/ directory with credentials and skill file
+    writePiutConfig(project.path, { slug, apiKey, serverUrl })
+    await writePiutSkill(project.path, slug, apiKey)
+    ensureGitignored(project.path)
+
+    // Write Copilot project-local MCP config if applicable
+    if (copilotTool) {
+      const hasCopilot = fs.existsSync(path.join(project.path, '.github', 'copilot-instructions.md'))
+        || fs.existsSync(path.join(project.path, '.github'))
+      if (hasCopilot) {
+        const vscodeMcpPath = path.join(project.path, '.vscode', 'mcp.json')
+        const serverConfig = copilotTool.generateConfig(slug, apiKey)
+        mergeConfig(vscodeMcpPath, copilotTool.configKey, serverConfig)
+      }
     }
+
+    // Write rule files
+    for (const rule of RULE_FILES) {
+      if (!rule.detect(project)) continue
+      const absPath = path.join(project.path, rule.filePath)
+      if (fs.existsSync(absPath) && hasPiutReference(absPath)) continue
+
+      if (rule.strategy === 'create' || !fs.existsSync(absPath)) {
+        const isAppendType = rule.strategy === 'append'
+        const content = isAppendType ? PROJECT_SKILL_SNIPPET + '\n' : DEDICATED_FILE_CONTENT
+        fs.mkdirSync(path.dirname(absPath), { recursive: true })
+        fs.writeFileSync(absPath, content, 'utf-8')
+      } else {
+        fs.appendFileSync(absPath, APPEND_SECTION)
+      }
+    }
+
+    toolLine(projectName, success('connected'), '\u2714')
+
+    // Register project server-side (best-effort)
+    const machineId = getMachineId()
+    const toolsDetected = RULE_FILES.filter(r => r.detect(project)).map(r => r.tool)
+    registerProject(apiKey, {
+      projectName,
+      projectPath: project.path,
+      machineId,
+      toolsDetected,
+      configFiles: RULE_FILES.filter(r => r.detect(project)).map(r => r.filePath),
+    }).catch(() => {})
+  }
+
+  // --- Disconnect removed projects ---
+  for (const { project } of toDisconnect) {
+    const projectName = path.basename(project.path)
+
+    // Remove dedicated rule files
+    for (const dedicatedFile of DEDICATED_FILES) {
+      const absPath = path.join(project.path, dedicatedFile)
+      if (fs.existsSync(absPath) && hasPiutReference(absPath)) {
+        try { fs.unlinkSync(absPath) } catch { /* ignore */ }
+      }
+    }
+
+    // Remove piut sections from append files
+    for (const appendFile of APPEND_FILES) {
+      const absPath = path.join(project.path, appendFile)
+      if (fs.existsSync(absPath) && hasPiutReference(absPath)) {
+        removePiutSection(absPath)
+      }
+    }
+
+    // Remove .vscode/mcp.json piut config
+    const vscodeMcpPath = path.join(project.path, '.vscode', 'mcp.json')
+    if (fs.existsSync(vscodeMcpPath) && isPiutConfigured(vscodeMcpPath, 'servers')) {
+      removeFromConfig(vscodeMcpPath, 'servers')
+    }
+
+    // Remove .piut/ directory
+    removePiutDir(project.path)
+
+    toolLine(projectName, warning('disconnected'), '\u2714')
+
+    // Unregister project server-side (best-effort)
+    const machineId = getMachineId()
+    unregisterProject(apiKey, project.path, machineId).catch(() => {})
   }
 
   console.log()
-  console.log(dim('  Restart your AI tools for changes to take effect.'))
+  if (toConnect.length > 0) {
+    console.log(success(`  ${toConnect.length} project(s) connected.`))
+  }
+  if (toDisconnect.length > 0) {
+    console.log(success(`  ${toDisconnect.length} project(s) disconnected.`))
+  }
   console.log()
 }
+
+// ---------------------------------------------------------------------------
+// Edit Brain — open piut.com in browser
+// ---------------------------------------------------------------------------
+
+function handleEditBrain(): void {
+  console.log(dim('  Opening piut.com/dashboard...'))
+  openInBrowser('https://piut.com/dashboard')
+  console.log(success('  \u2713 Opened in browser.'))
+  console.log()
+}
+
+// ---------------------------------------------------------------------------
+// Resync Brain — scan filesystem + merge update via update_brain
+// ---------------------------------------------------------------------------
+
+/** Format scan data into a text string suitable for update_brain */
+function formatScanContent(input: { summary: { folders: string[]; projects: { name: string; path: string; description: string }[]; configFiles: { name: string; content: string }[]; recentDocuments: { name: string; content: string }[]; personalDocuments?: { name: string; content: string; format: string }[] } }): string {
+  const { summary } = input
+  const parts: string[] = []
+
+  parts.push('The user has re-scanned their filesystem. Below is updated information about their projects, config files, and documents. Please merge this into the existing brain sections, preserving existing content and updating what has changed.')
+  parts.push('')
+
+  if (summary.folders.length > 0) {
+    parts.push(`## Folder Structure\n${summary.folders.join('\n')}`)
+  }
+
+  if (summary.projects.length > 0) {
+    const projectLines = summary.projects.map(p =>
+      `- **${p.name}** (${p.path})${p.description ? ` \u2014 ${p.description}` : ''}`
+    )
+    parts.push(`## Projects Found\n${projectLines.join('\n')}`)
+  }
+
+  // Budget per file (same logic as server-side)
+  const totalFiles = (summary.configFiles?.length || 0) + (summary.recentDocuments?.length || 0) + (summary.personalDocuments?.length || 0)
+  const fileLimit = totalFiles <= 10 ? 10_000 : totalFiles <= 30 ? 5_000 : totalFiles <= 60 ? 3_000 : 2_000
+
+  if (summary.configFiles.length > 0) {
+    const configBlocks = summary.configFiles.map(f =>
+      `### ${f.name}\n\`\`\`\n${f.content.slice(0, fileLimit)}\n\`\`\``
+    )
+    parts.push(`## AI Config Files\n${configBlocks.join('\n\n')}`)
+  }
+
+  if (summary.recentDocuments.length > 0) {
+    const docBlocks = summary.recentDocuments.map(f =>
+      `### ${f.name}\n${f.content.slice(0, fileLimit)}`
+    )
+    parts.push(`## Recent Documents\n${docBlocks.join('\n\n')}`)
+  }
+
+  if (summary.personalDocuments && summary.personalDocuments.length > 0) {
+    const docBlocks = summary.personalDocuments.map(f =>
+      `### ${f.name}\n${f.content.slice(0, fileLimit)}`
+    )
+    parts.push(`## Personal Documents\n${docBlocks.join('\n\n')}`)
+  }
+
+  let result = parts.join('\n\n')
+
+  // Cap at 400K chars (~100K tokens, matching update_brain limit)
+  if (result.length > 400_000) {
+    result = result.slice(0, 400_000)
+  }
+
+  return result
+}
+
+async function handleResyncBrain(apiKey: string, validation: ValidateResponse): Promise<void> {
+  if (!validation.serverUrl) {
+    console.log(warning('  Brain must be deployed before resyncing.'))
+    console.log(dim('  Run ') + brand('piut deploy') + dim(' first.'))
+    console.log()
+    return
+  }
+
+  const cwd = process.cwd()
+  const cwdDisplay = cwd.replace(os.homedir(), '~')
+
+  console.log(dim(`  Scanning ${cwdDisplay}...`))
+
+  // Scan filesystem (same as build)
+  const scanResult = await scanFolders([cwd])
+  const allFolderPaths = scanResult.folders.map(f => f.path)
+  const brainInput = buildBrainInput(scanResult, allFolderPaths)
+
+  const projCount = brainInput.summary.projects.length
+  const cfgCount = brainInput.summary.configFiles.length
+  const dcCount = (brainInput.summary.personalDocuments?.length || 0) + brainInput.summary.recentDocuments.length
+
+  console.log(success(`  Scanned: ${projCount} projects, ${cfgCount} config files, ${dcCount} docs`))
+  console.log()
+
+  if (projCount === 0 && cfgCount === 0) {
+    console.log(chalk.yellow('  No projects or config files found to resync from.'))
+    console.log()
+    return
+  }
+
+  // Format scan data for update_brain
+  const content = formatScanContent(brainInput)
+
+  const spinner = new Spinner()
+  spinner.start('Resyncing brain...')
+
+  try {
+    const result = await resyncBrain(validation.serverUrl, apiKey, content)
+    spinner.stop()
+
+    console.log()
+    console.log(success('  \u2713 Brain resynced.'))
+    console.log(dim(`  ${result.summary}`))
+    console.log()
+  } catch (err: unknown) {
+    spinner.stop()
+    const msg = (err as Error).message
+    console.log(chalk.red(`  \u2717 ${msg}`))
+    console.log()
+    throw new CliError(msg)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// View Brain
+// ---------------------------------------------------------------------------
 
 async function handleViewBrain(apiKey: string): Promise<void> {
   console.log(dim('  Loading brain...'))
@@ -428,7 +672,7 @@ async function handleViewBrain(apiKey: string): Promise<void> {
   for (const [key, label] of Object.entries(SECTION_LABELS)) {
     const content = (sections as Record<string, string>)[key] || ''
     if (!content.trim()) {
-      console.log(dim(`  ${label} — (empty)`))
+      console.log(dim(`  ${label} \u2014 (empty)`))
     } else {
       console.log(success(`  ${label}`))
       for (const line of content.split('\n')) {
@@ -454,7 +698,7 @@ async function handleViewBrain(apiKey: string): Promise<void> {
       try {
         await publishServer(apiKey)
         console.log()
-        console.log(success('  ✓ Brain published.'))
+        console.log(success('  \u2713 Brain published.'))
         console.log()
       } catch (err: unknown) {
         console.log()
@@ -464,7 +708,7 @@ async function handleViewBrain(apiKey: string): Promise<void> {
           console.log(`  Subscribe at: ${brand('https://piut.com/dashboard/billing')}`)
           console.log(dim('  14-day free trial included.'))
         } else {
-          console.log(chalk.red(`  ✗ ${msg}`))
+          console.log(chalk.red(`  \u2717 ${msg}`))
         }
         console.log()
       }

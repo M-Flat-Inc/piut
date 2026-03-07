@@ -49,6 +49,16 @@ export interface ValidateResponse {
   _contractVersion: string
 }
 
+export interface LoginResponse {
+  apiKey: string
+  slug: string
+  displayName: string
+  serverUrl: string
+  planType: string
+  status: ValidateStatus
+  _contractVersion: string
+}
+
 export interface BrainSections {
   about: string
   soul: string
@@ -63,6 +73,7 @@ export interface BuildBrainInput {
     projects: { name: string; path: string; description: string }[]
     configFiles: { name: string; content: string }[]
     recentDocuments: { name: string; content: string }[]
+    personalDocuments?: { name: string; content: string; format: string }[]
   }
 }
 
