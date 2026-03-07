@@ -391,7 +391,9 @@ describe('setup command', () => {
   })
 
   it('configures Claude Desktop with mcp-remote', async () => {
-    const claudeDesktopDir = path.join(tmpHome, 'Library', 'Application Support', 'Claude')
+    const claudeDesktopDir = process.platform === 'darwin'
+      ? path.join(tmpHome, 'Library', 'Application Support', 'Claude')
+      : path.join(tmpHome, '.config', 'Claude')
     fs.mkdirSync(claudeDesktopDir, { recursive: true })
 
     const { stdout, exitCode } = await runAsync(
