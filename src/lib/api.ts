@@ -98,35 +98,40 @@ export async function* buildBrainStreaming(
   const decoder = new TextDecoder()
   let buffer = ''
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
-    const parts = buffer.split('\n\n')
-    // Last part may be incomplete — keep it in the buffer
-    buffer = parts.pop() || ''
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n\n')
+      // Last part may be incomplete — keep it in the buffer
+      buffer = parts.pop() || ''
 
-    for (const part of parts) {
-      let eventName = ''
-      let eventData = ''
+      for (const part of parts) {
+        let eventName = ''
+        let eventData = ''
 
-      for (const line of part.split('\n')) {
-        if (line.startsWith('event: ')) {
-          eventName = line.slice(7).trim()
-        } else if (line.startsWith('data: ')) {
-          eventData = line.slice(6)
+        for (const line of part.split('\n')) {
+          if (line.startsWith('event: ')) {
+            eventName = line.slice(7).trim()
+          } else if (line.startsWith('data: ')) {
+            eventData = line.slice(6)
+          }
         }
-      }
 
-      if (eventName && eventData) {
-        try {
-          yield { event: eventName as BuildStreamEvent['event'], data: JSON.parse(eventData) }
-        } catch {
-          // Skip malformed events
+        if (eventName && eventData) {
+          try {
+            yield { event: eventName as BuildStreamEvent['event'], data: JSON.parse(eventData) }
+          } catch {
+            // Skip malformed events
+          }
         }
       }
     }
+  } catch {
+    // Connection dropped mid-stream (e.g., server deploy/restart)
+    yield { event: 'error', data: { message: 'Connection lost. The build may still complete — run `piut status` to check.' } }
   }
 }
 
