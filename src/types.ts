@@ -15,6 +15,10 @@ export interface ToolDefinition {
   /** JSON key that holds MCP servers (e.g., "mcpServers", "servers", "context_servers").
    *  Omit for skill-only tools that don't have MCP config files. */
   configKey?: string
+  /** Dot-separated key path for global config files with nested structure.
+   *  E.g., "mcp.servers" for VS Code settings.json where servers are at config.mcp.servers.
+   *  When set, global config paths use this key path instead of configKey. */
+  globalConfigKey?: string
   /** Config file paths by platform. Also used for detection — if the parent directory
    *  of any path exists, the tool is considered "installed". */
   configPaths: {
@@ -38,6 +42,8 @@ export interface ToolDefinition {
 export interface DetectedTool {
   tool: ToolDefinition
   configPath: string
+  /** The resolved configKey for this specific path (may differ for global vs project configs) */
+  resolvedConfigKey: string
   exists: boolean
   alreadyConfigured: boolean
   /** True if piut-context exists but has a different API key than the one being used */
@@ -75,11 +81,8 @@ export interface BrainSections {
 
 export interface BuildBrainInput {
   summary: {
-    folders: string[]
     projects: { name: string; path: string; description: string }[]
     configFiles: { name: string; content: string }[]
-    recentDocuments: { name: string; content: string }[]
-    personalDocuments?: { name: string; content: string; format: string }[]
   }
 }
 

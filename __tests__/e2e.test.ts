@@ -556,7 +556,7 @@ describe('build command', () => {
     const { stdout, exitCode } = runSync(['build', '--help'])
     expect(exitCode).toBe(0)
     expect(stdout).toContain('--key')
-    expect(stdout).toContain('--folders')
+    expect(stdout).toContain('--yes')
   })
 
   it('builds brain from scanned projects', async () => {
@@ -573,8 +573,8 @@ describe('build command', () => {
     )
 
     const { stdout, exitCode } = await runAsync(
-      ['build', '--key', 'pb_valid_test_key', '--no-publish', '--yes', '--folders', path.join(tmpHome, 'Projects')],
-      { env: apiEnv() }
+      ['build', '--key', 'pb_valid_test_key', '--no-publish', '--yes'],
+      { env: apiEnv(), cwd: path.join(tmpHome, 'Projects') }
     )
     expect(exitCode).toBe(0)
     expect(stdout).toContain('Brain built')
@@ -582,16 +582,16 @@ describe('build command', () => {
     expect(stdout).toContain('Soul')
   })
 
-  it('warns when no projects found', async () => {
+  it('warns when no config files found', async () => {
     const emptyDir = path.join(tmpHome, 'empty-dir')
     fs.mkdirSync(emptyDir, { recursive: true })
 
     const { stdout, exitCode } = await runAsync(
-      ['build', '--key', 'pb_valid_test_key', '--folders', emptyDir],
-      { env: apiEnv() }
+      ['build', '--key', 'pb_valid_test_key', '--yes'],
+      { env: apiEnv(), cwd: emptyDir }
     )
     expect(exitCode).toBe(0)
-    expect(stdout).toContain('No parseable files found')
+    expect(stdout).toContain('No config files found')
   })
 })
 

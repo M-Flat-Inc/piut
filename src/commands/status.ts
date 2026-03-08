@@ -115,13 +115,13 @@ export async function statusCommand(options: StatusOptions = {}): Promise<void> 
   let foundAny = false
 
   for (const tool of TOOLS) {
-    const paths = resolveConfigPaths(tool.configPaths)
+    const paths = resolveConfigPaths(tool)
 
-    for (const configPath of paths) {
-      if (!fs.existsSync(configPath)) continue
+    for (const { filePath, configKey } of paths) {
+      if (!fs.existsSync(filePath)) continue
 
       foundAny = true
-      const configured = isPiutConfigured(configPath, tool.configKey)
+      const configured = isPiutConfigured(filePath, configKey)
 
       if (configured) {
         toolLine(tool.name, success('connected'), '\u2714')
@@ -241,22 +241,22 @@ async function verifyStatus(): Promise<void> {
   console.log('  Tool Configurations')
 
   for (const tool of TOOLS) {
-    const paths = resolveConfigPaths(tool.configPaths)
+    const paths = resolveConfigPaths(tool)
 
-    for (const configPath of paths) {
-      if (!fs.existsSync(configPath)) continue
+    for (const { filePath, configKey } of paths) {
+      if (!fs.existsSync(filePath)) continue
 
-      const piutConfig = getPiutConfig(configPath, tool.configKey)
+      const piutConfig = getPiutConfig(filePath, configKey)
       if (!piutConfig) {
         toolLine(tool.name, dim('installed, not connected'), '\u25cb')
         break
       }
 
-      const configKey = extractKeyFromConfig(piutConfig)
-      if (configKey && configKey === store.apiKey) {
+      const extractedKey = extractKeyFromConfig(piutConfig)
+      if (extractedKey && extractedKey === store.apiKey) {
         toolLine(tool.name, success('key matches'), '\u2714')
-      } else if (configKey) {
-        const masked = configKey.slice(0, 6) + '...'
+      } else if (extractedKey) {
+        const masked = extractedKey.slice(0, 6) + '...'
         toolLine(tool.name, chalk.red(`key STALE (${masked})`), '\u2717')
         issues++
       } else {

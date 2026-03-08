@@ -403,14 +403,18 @@ export async function uploadVaultFile(
   key: string,
   filename: string,
   content: string,
+  encoding?: 'base64' | 'utf8',
 ): Promise<VaultUploadResponse> {
+  const payload: Record<string, string> = { filename, content }
+  if (encoding) payload.encoding = encoding
+
   const res = await fetch(`${API_BASE}/api/cli/vault/upload`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ filename, content }),
+    body: JSON.stringify(payload),
   })
 
   if (!res.ok) {

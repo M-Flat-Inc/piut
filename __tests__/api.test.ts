@@ -61,10 +61,8 @@ describe('buildBrain', () => {
 
     const input = {
       summary: {
-        folders: ['~/Projects'],
         projects: [{ name: 'test', path: '~/test' }],
         configFiles: [],
-        recentDocuments: [],
       },
     }
 
@@ -89,7 +87,7 @@ describe('buildBrain', () => {
       json: () => Promise.resolve({ sections }),
     })
 
-    const result = await buildBrain('pb_test', { summary: { folders: [], projects: [], configFiles: [], recentDocuments: [] } })
+    const result = await buildBrain('pb_test', { summary: { projects: [], configFiles: [] } })
     expect(result).toEqual(sections)
   })
 
@@ -100,7 +98,7 @@ describe('buildBrain', () => {
       json: () => Promise.resolve({ error: 'Rate limit: maximum 3 brain builds per day' }),
     })
 
-    await expect(buildBrain('pb_test', { summary: { folders: [], projects: [], configFiles: [], recentDocuments: [] } }))
+    await expect(buildBrain('pb_test', { summary: { projects: [], configFiles: [] } }))
       .rejects.toThrow('Rate limit: maximum 3 brain builds per day')
   })
 
@@ -111,7 +109,7 @@ describe('buildBrain', () => {
       json: () => Promise.resolve({ error: 'AI generation failed' }),
     })
 
-    await expect(buildBrain('pb_test', { summary: { folders: [], projects: [], configFiles: [], recentDocuments: [] } }))
+    await expect(buildBrain('pb_test', { summary: { projects: [], configFiles: [] } }))
       .rejects.toThrow('AI generation failed')
   })
 })

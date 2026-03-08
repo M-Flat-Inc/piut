@@ -1,43 +1,23 @@
 /**
- * Filesystem scanner for brain building.
- * Walks selected folders, finds parseable files, extracts text,
- * and groups results by folder for the review step.
+ * Project detection and AI config file collection for brain building.
+ * Walks selected folders, finds projects, and collects AI config files.
+ *
+ * Document scanning was removed — users upload files via the vault instead.
  */
 
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { canParse, isAiConfigFile, AI_CONFIG_FILENAMES, getFileCategory } from './file-types.js'
-import { extractTextFromFile } from './file-parsers.js'
-import type { ParsedFile } from './file-parsers.js'
-import { groupFilesByFolder, displayPath, getDefaultScanDirs } from './folder-tree.js'
-import type { FolderScanResult } from './folder-tree.js'
-import type { BuildBrainInput, ProjectInfo } from '../types.js'
-
-export { getDefaultScanDirs } from './folder-tree.js'
+import { isAiConfigFile, AI_CONFIG_FILENAMES } from './file-types.js'
 
 const home = os.homedir()
 
 export interface ScanProgress {
-  phase: 'scanning' | 'parsing' | 'projects' | 'configs' | 'docs'
+  phase: 'projects' | 'configs'
   message: string
-  folder?: string
 }
 
 export type ProgressCallback = (progress: ScanProgress) => void
-
-export interface ScanResult {
-  /** All parsed personal documents, grouped by folder */
-  folders: FolderScanResult[]
-  /** AI config files (CLAUDE.md, .cursorrules, etc.) */
-  configFiles: { name: string; content: string }[]
-  /** Detected projects */
-  projects: ProjectInfo[]
-  /** All parsed files (flat) */
-  allFiles: ParsedFile[]
-  totalFiles: number
-  totalBytes: number
-}
 
 // ---------------------------------------------------------------------------
 // Skip lists
@@ -62,8 +42,64 @@ function shouldSkipDir(name: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Project detection (kept from original for config file collection)
+// Default scan directories
 // ---------------------------------------------------------------------------
+
+/** Directories to exclude from home folder listing */
+const SKIP_HOME_DIRS = new Set([
+  'Library', 'Applications', 'Public', 'Movies', 'Music', 'Pictures',
+  'Templates', '.Trash',
+])
+
+/** Dot-directories to include in home listing (AI tool configs) */
+const INCLUDE_DOT_DIRS = new Set([
+  '.cursor', '.windsurf', '.openclaw', '.zed', '.github', '.amazonq',
+  '.gemini', '.mcporter', '.paperclip',
+  // .claude excluded — useful files collected by collectGlobalConfigFiles()
+])
+
+/** Get default scan directories (home subdirs + cloud storage). */
+export function getDefaultScanDirs(): string[] {
+  const dirs: string[] = []
+
+  try {
+    const entries = fs.readdirSync(home, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      if (entry.name.startsWith('.') && !INCLUDE_DOT_DIRS.has(entry.name)) continue
+      if (SKIP_HOME_DIRS.has(entry.name)) continue
+      dirs.push(path.join(home, entry.name))
+    }
+  } catch {
+    // Permission denied
+  }
+
+  // macOS cloud storage
+  const cloudStorage = path.join(home, 'Library', 'CloudStorage')
+  try {
+    if (fs.existsSync(cloudStorage) && fs.statSync(cloudStorage).isDirectory()) {
+      const entries = fs.readdirSync(cloudStorage, { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const fullPath = path.join(cloudStorage, entry.name)
+        if (!dirs.includes(fullPath)) {
+          dirs.push(fullPath)
+        }
+      }
+    }
+  } catch {
+    // Permission denied
+  }
+
+  if (dirs.length === 0) dirs.push(home)
+  return dirs
+}
+
+// ---------------------------------------------------------------------------
+// Project detection
+// ---------------------------------------------------------------------------
+
+import type { ProjectInfo } from '../types.js'
 
 function isProject(dirPath: string): boolean {
   return fs.existsSync(path.join(dirPath, '.git')) ||
@@ -139,7 +175,7 @@ export function detectProjects(scanDirs: string[], onProgress?: ProgressCallback
         if (isProject(fullPath)) {
           const info = buildProjectInfo(fullPath)
           projects.push(info)
-          onProgress?.({ phase: 'projects', message: `${info.name} (${displayPath(fullPath)})` })
+          onProgress?.({ phase: 'projects', message: `${info.name} (${fullPath})` })
         } else {
           walk(fullPath, depth + 1)
         }
@@ -232,162 +268,19 @@ export function collectProjectConfigFiles(projects: ProjectInfo[], onProgress?: 
   return configs
 }
 
-/** Collect all config files (global + per-project). Convenience wrapper. */
-function collectConfigFiles(projects: ProjectInfo[], onProgress?: ProgressCallback): { name: string; content: string }[] {
-  return [
-    ...collectGlobalConfigFiles(onProgress),
-    ...collectProjectConfigFiles(projects, onProgress),
-  ]
-}
-
-// ---------------------------------------------------------------------------
-// Full filesystem scan for personal documents
-// ---------------------------------------------------------------------------
-
-const MAX_SCAN_DEPTH = 6
-const MAX_FILES = 500
-
-/** Walk directories and collect all parseable files. */
-export async function scanFilesInDirs(
-  dirs: string[],
-  onProgress?: ProgressCallback,
-): Promise<ParsedFile[]> {
-  const files: ParsedFile[] = []
-  const seen = new Set<string>()
-
-  function walk(dir: string, depth: number): string[] {
-    if (depth > MAX_SCAN_DEPTH) return []
-    const found: string[] = []
-
-    try {
-      const items = fs.readdirSync(dir, { withFileTypes: true })
-      for (const item of items) {
-        if (item.isDirectory()) {
-          if (!shouldSkipDir(item.name)) {
-            found.push(...walk(path.join(dir, item.name), depth + 1))
-          }
-        } else if (item.isFile()) {
-          if (canParse(item.name) && !isAiConfigFile(item.name)) {
-            const fullPath = path.join(dir, item.name)
-            if (!seen.has(fullPath)) {
-              seen.add(fullPath)
-              found.push(fullPath)
-            }
-          }
-        }
-      }
-    } catch {
-      // Permission denied
-    }
-
-    return found
-  }
-
-  // Collect all file paths
-  const allPaths: string[] = []
-  for (const dir of dirs) {
-    onProgress?.({ phase: 'scanning', message: displayPath(dir) })
-    allPaths.push(...walk(dir, 0))
-    if (allPaths.length > MAX_FILES) break
-  }
-
-  // Parse files (async for document formats)
-  const pathsToProcess = allPaths.slice(0, MAX_FILES)
-  for (const filePath of pathsToProcess) {
-    try {
-      const stat = fs.statSync(filePath)
-      onProgress?.({ phase: 'parsing', message: displayPath(filePath) })
-
-      const content = await extractTextFromFile(filePath)
-      if (content && content.trim()) {
-        const category = getFileCategory(filePath)
-        files.push({
-          path: filePath,
-          displayPath: displayPath(filePath),
-          content,
-          format: category === 'document' ? path.extname(filePath).slice(1) : 'text',
-          sizeBytes: stat.size,
-          folder: path.dirname(filePath),
-        })
-      }
-    } catch {
-      // Skip unparseable files
-    }
-  }
-
-  return files
-}
-
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-
-/**
- * Scan selected folders for all parseable files + detect projects + collect config files.
- * This is the main entry point for the build command's scan phase.
- */
-export async function scanFolders(
-  dirs: string[],
-  onProgress?: ProgressCallback,
-): Promise<ScanResult> {
-  // 1. Scan for personal documents (async — parses PDFs, DOCX, etc.)
-  const allFiles = await scanFilesInDirs(dirs, onProgress)
-  const folders = groupFilesByFolder(allFiles)
-
-  // 2. Detect projects and collect config files (sync — fast)
-  const projects = detectProjects(dirs, onProgress)
-  const configFiles = collectConfigFiles(projects, onProgress)
-
-  const totalFiles = allFiles.length
-  const totalBytes = allFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
-
-  return { folders, configFiles, projects, allFiles, totalFiles, totalBytes }
-}
-
-/**
- * Build the API input from a scan result, filtered to selected folders.
- */
-export function buildBrainInput(
-  scanResult: ScanResult,
-  selectedFolderPaths: string[],
-): BuildBrainInput {
-  const selectedSet = new Set(selectedFolderPaths)
-
-  // Filter files to selected folders
-  const selectedFiles = scanResult.allFiles.filter(f => selectedSet.has(f.folder))
-
-  // Build folder tree lines for display
-  const folderTree: string[] = []
-  for (const folder of scanResult.folders) {
-    if (selectedSet.has(folder.path)) {
-      folderTree.push(`${folder.displayPath}/ (${folder.fileCount} files)`)
-    }
-  }
-
-  // Separate personal documents from config-like files
-  const personalDocuments = selectedFiles.map(f => ({
-    name: f.displayPath,
-    content: f.content,
-    format: f.format,
-  }))
-
-  return {
-    summary: {
-      folders: folderTree,
-      projects: scanResult.projects.map(p => ({
-        name: p.name,
-        path: p.path.replace(home, '~'),
-        description: p.description,
-      })),
-      configFiles: scanResult.configFiles,
-      recentDocuments: [],
-      personalDocuments,
-    },
-  }
-}
 
 /** Scan for projects that can be connected (used by connect command). */
 export function scanForProjects(folders?: string[]): ProjectInfo[] {
   const scanDirs = folders || getDefaultScanDirs()
   return detectProjects(scanDirs)
+}
+
+/** Format file size for display. */
+export function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }

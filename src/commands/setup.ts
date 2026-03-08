@@ -77,20 +77,20 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     // Skip skill-only tools in setup — they don't have MCP config files
     if (tool.skillOnly) continue
 
-    const paths = resolveConfigPaths(tool.configPaths)
+    const paths = resolveConfigPaths(tool)
 
     // For tools with project-local and global paths, prefer project-local if it exists
-    for (const configPath of paths) {
-      const exists = fs.existsSync(configPath)
-      const parentExists = fs.existsSync(path.dirname(configPath))
+    for (const { filePath, configKey } of paths) {
+      const exists = fs.existsSync(filePath)
+      const parentExists = fs.existsSync(path.dirname(filePath))
 
       if (exists || parentExists) {
-        const configured = exists && !!tool.configKey && isPiutConfigured(configPath, tool.configKey)
+        const configured = exists && !!configKey && isPiutConfigured(filePath, configKey)
 
         // Check if existing config has a different (stale) key or wrong slug
         let staleKey = false
-        if (configured && tool.configKey) {
-          const piutConfig = getPiutConfig(configPath, tool.configKey)
+        if (configured && configKey) {
+          const piutConfig = getPiutConfig(filePath, configKey)
           if (piutConfig) {
             const existingKey = extractKeyFromConfig(piutConfig)
             if (existingKey && existingKey !== apiKey) {
@@ -105,7 +105,8 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
 
         detected.push({
           tool,
-          configPath,
+          configPath: filePath,
+          resolvedConfigKey: configKey,
           exists,
           alreadyConfigured: configured && !staleKey,
           staleKey,
@@ -215,9 +216,9 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     }
 
     // Standard config file merge
-    if (tool.generateConfig && tool.configKey) {
+    if (tool.generateConfig && det.resolvedConfigKey) {
       const serverConfig = tool.generateConfig(slug, apiKey)
-      mergeConfig(configPath, tool.configKey, serverConfig)
+      mergeConfig(configPath, det.resolvedConfigKey, serverConfig)
       configured.push(tool.name)
       toolLine(tool.name, success('configured'), '✔')
     }
@@ -271,8 +272,8 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
     // Verify each tool's config was written correctly
     for (const det of selected) {
       if (!configured.includes(det.tool.name)) continue
-      if (!det.tool.configKey) continue
-      const piutConfig = getPiutConfig(det.configPath, det.tool.configKey)
+      if (!det.resolvedConfigKey) continue
+      const piutConfig = getPiutConfig(det.configPath, det.resolvedConfigKey)
       if (piutConfig) {
         toolLine(det.tool.name, success('config verified'), '✔')
       } else {

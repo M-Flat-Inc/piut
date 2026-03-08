@@ -3,14 +3,12 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import {
-  scanFolders,
-  buildBrainInput,
   scanForProjects,
   getDefaultScanDirs,
   detectProjects,
   collectGlobalConfigFiles,
   collectProjectConfigFiles,
-  scanFilesInDirs,
+  formatSize,
   MAX_BRAIN_INPUT_BYTES,
 } from '../src/lib/brain-scanner.js'
 
@@ -91,7 +89,6 @@ describe('scanForProjects', () => {
     fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
 
     const projects = scanForProjects([projectDir])
-    // node_modules should not be detected as a project
     expect(projects.every(p => !p.name.includes('node_modules'))).toBe(true)
   })
 
@@ -109,115 +106,6 @@ describe('scanForProjects', () => {
   })
 })
 
-describe('scanFolders', () => {
-  it('returns structured result with folders, projects, configFiles, allFiles', async () => {
-    const projectDir = path.join(tmpHome, 'projects', 'test-app')
-    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
-    fs.writeFileSync(
-      path.join(projectDir, 'package.json'),
-      JSON.stringify({ name: 'test-app', description: 'Test application' })
-    )
-    fs.writeFileSync(path.join(projectDir, 'CLAUDE.md'), '# Claude rules for test-app')
-    fs.writeFileSync(path.join(projectDir, 'notes.md'), '# Some notes about the project')
-
-    const result = await scanFolders([path.join(tmpHome, 'projects')])
-
-    expect(result.projects).toHaveLength(1)
-    expect(result.projects[0].name).toBe('test-app')
-    expect(result.configFiles.length).toBeGreaterThanOrEqual(1)
-    expect(result.folders).toBeDefined()
-    expect(result.totalFiles).toBeGreaterThanOrEqual(0)
-  })
-
-  it('returns empty result for directory with no parseable files', async () => {
-    const emptyDir = path.join(tmpHome, 'empty')
-    fs.mkdirSync(emptyDir, { recursive: true })
-
-    const result = await scanFolders([emptyDir])
-    expect(result.projects).toEqual([])
-    expect(result.allFiles).toEqual([])
-    expect(result.totalFiles).toBe(0)
-  })
-
-  it('collects .md files as personal documents', async () => {
-    const docsDir = path.join(tmpHome, 'docs')
-    fs.mkdirSync(docsDir, { recursive: true })
-    fs.writeFileSync(path.join(docsDir, 'NOTES.md'), '# My Notes\nSome recent notes')
-
-    const result = await scanFolders([docsDir])
-    const notesFile = result.allFiles.find(f => f.path.includes('NOTES.md'))
-    expect(notesFile).toBeDefined()
-    expect(notesFile!.content).toContain('My Notes')
-  })
-
-  it('skips AI config files from personal documents', async () => {
-    const projectDir = path.join(tmpHome, 'projects', 'my-app')
-    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
-    fs.writeFileSync(path.join(projectDir, 'CLAUDE.md'), '# Claude rules')
-    fs.writeFileSync(path.join(projectDir, 'readme.md'), '# My App readme')
-
-    const result = await scanFolders([path.join(tmpHome, 'projects')])
-    // CLAUDE.md should be in configFiles, not allFiles (personal docs)
-    const claudeInDocs = result.allFiles.find(f => f.path.includes('CLAUDE.md'))
-    expect(claudeInDocs).toBeUndefined()
-    const claudeInConfigs = result.configFiles.find(c => c.name.includes('CLAUDE.md'))
-    expect(claudeInConfigs).toBeDefined()
-  })
-
-  it('skips .claude directory during scanning', async () => {
-    // Create .claude with junk data (tool-results, plugins)
-    const claudeToolResults = path.join(tmpHome, '.claude', 'projects', 'test-session', 'tool-results')
-    fs.mkdirSync(claudeToolResults, { recursive: true })
-    fs.writeFileSync(path.join(claudeToolResults, 'result.md'), '# Tool Result\nSome output')
-
-    const claudePlugins = path.join(tmpHome, '.claude', 'plugins', 'marketplaces', 'test-plugin')
-    fs.mkdirSync(claudePlugins, { recursive: true })
-    fs.writeFileSync(path.join(claudePlugins, 'config.json'), '{"name": "test"}')
-
-    // Also create a normal file outside .claude
-    const docsDir = path.join(tmpHome, 'docs')
-    fs.mkdirSync(docsDir, { recursive: true })
-    fs.writeFileSync(path.join(docsDir, 'notes.md'), '# Notes')
-
-    const result = await scanFolders([tmpHome])
-    const claudeFile = result.allFiles.find(f => f.path.includes('.claude'))
-    expect(claudeFile).toBeUndefined()
-  })
-})
-
-describe('buildBrainInput', () => {
-  it('builds API input from scan result with selected folders', async () => {
-    const docsDir = path.join(tmpHome, 'docs')
-    fs.mkdirSync(docsDir, { recursive: true })
-    fs.writeFileSync(path.join(docsDir, 'resume.md'), '# Resume\nSoftware engineer')
-    fs.writeFileSync(path.join(docsDir, 'notes.txt'), 'Some notes here')
-
-    const result = await scanFolders([docsDir])
-    const input = buildBrainInput(result, [docsDir])
-
-    expect(input.summary).toBeDefined()
-    expect(input.summary.personalDocuments).toBeDefined()
-    expect(input.summary.personalDocuments!.length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('filters files by selected folders', async () => {
-    const dir1 = path.join(tmpHome, 'dir1')
-    const dir2 = path.join(tmpHome, 'dir2')
-    fs.mkdirSync(dir1, { recursive: true })
-    fs.mkdirSync(dir2, { recursive: true })
-    fs.writeFileSync(path.join(dir1, 'file1.md'), '# File 1')
-    fs.writeFileSync(path.join(dir2, 'file2.md'), '# File 2')
-
-    const result = await scanFolders([dir1, dir2])
-    // Only select dir1
-    const input = buildBrainInput(result, [dir1])
-
-    const names = (input.summary.personalDocuments || []).map(d => d.name)
-    expect(names.some(n => n.includes('file1'))).toBe(true)
-    expect(names.some(n => n.includes('file2'))).toBe(false)
-  })
-})
-
 describe('detectProjects (exported)', () => {
   it('can be called directly', () => {
     const projectDir = path.join(tmpHome, 'my-project')
@@ -231,8 +119,6 @@ describe('detectProjects (exported)', () => {
 
 describe('collectGlobalConfigFiles', () => {
   it('returns array without errors', () => {
-    // collectGlobalConfigFiles uses os.homedir() which is cached at module load time,
-    // not affected by process.env.HOME override. We verify it runs without errors.
     const configs = collectGlobalConfigFiles()
     expect(Array.isArray(configs)).toBe(true)
   })
@@ -262,15 +148,17 @@ describe('collectProjectConfigFiles', () => {
   })
 })
 
-describe('scanFilesInDirs (exported)', () => {
-  it('scans directories for parseable files', async () => {
-    const docsDir = path.join(tmpHome, 'docs')
-    fs.mkdirSync(docsDir, { recursive: true })
-    fs.writeFileSync(path.join(docsDir, 'notes.md'), '# Notes\nContent here')
+describe('formatSize', () => {
+  it('formats bytes', () => {
+    expect(formatSize(512)).toBe('512 B')
+  })
 
-    const files = await scanFilesInDirs([docsDir])
-    expect(files).toHaveLength(1)
-    expect(files[0].content).toContain('Notes')
+  it('formats kilobytes', () => {
+    expect(formatSize(2048)).toBe('2.0 KB')
+  })
+
+  it('formats megabytes', () => {
+    expect(formatSize(1_500_000)).toBe('1.4 MB')
   })
 })
 
@@ -288,9 +176,7 @@ describe('getDefaultScanDirs', () => {
   })
 
   it('includes home when no common directories exist', () => {
-    // In a temp HOME with no standard dirs, should fall back to home
     const dirs = getDefaultScanDirs()
-    // At minimum, it should have something
     expect(dirs.length).toBeGreaterThan(0)
   })
 })

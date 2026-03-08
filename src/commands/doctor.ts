@@ -86,12 +86,12 @@ export async function doctorCommand(options: DoctorOptions): Promise<void> {
   let toolsFixed = 0
 
   for (const tool of TOOLS) {
-    const paths = resolveConfigPaths(tool.configPaths)
+    const paths = resolveConfigPaths(tool)
 
-    for (const configPath of paths) {
+    for (const { filePath: configPath, configKey: resolvedKey } of paths) {
       if (!fs.existsSync(configPath)) continue
 
-      const piutConfig = getPiutConfig(configPath, tool.configKey)
+      const piutConfig = getPiutConfig(configPath, resolvedKey)
 
       if (!piutConfig) {
         result.tools.push({
@@ -108,14 +108,14 @@ export async function doctorCommand(options: DoctorOptions): Promise<void> {
         break
       }
 
-      const configKey = extractKeyFromConfig(piutConfig)
-      const configPrefix = configKey ? configKey.slice(0, 7) + '...' : '(none)'
+      const extractedKey = extractKeyFromConfig(piutConfig)
+      const configPrefix = extractedKey ? extractedKey.slice(0, 7) + '...' : '(none)'
       let keyMatch: 'match' | 'stale' | 'missing' = 'missing'
 
-      if (!configKey) {
+      if (!extractedKey) {
         keyMatch = 'missing'
         result.issues++
-      } else if (apiKey && configKey === apiKey) {
+      } else if (apiKey && extractedKey === apiKey) {
         keyMatch = 'match'
       } else {
         keyMatch = 'stale'
@@ -136,7 +136,7 @@ export async function doctorCommand(options: DoctorOptions): Promise<void> {
       // Fix stale configs if --fix
       if (keyMatch === 'stale' && options.fix && apiKey && result.key.valid && result.key.slug) {
         const serverConfig = tool.generateConfig(result.key.slug, apiKey)
-        mergeConfig(configPath, tool.configKey, serverConfig)
+        mergeConfig(configPath, resolvedKey, serverConfig)
         toolResult.fixed = true
         toolResult.keyMatch = 'match'
         result.issues-- // no longer an issue

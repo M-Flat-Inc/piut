@@ -33,34 +33,61 @@ export function writeConfig(filePath: string, data: Record<string, unknown>): vo
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n', 'utf-8')
 }
 
-/** Check if piut-context is already configured in a config file. */
+/** Navigate a dot-separated key path (e.g., "mcp.servers") to get the nested object. */
+function resolveKeyPath(config: Record<string, unknown>, keyPath: string): Record<string, unknown> | undefined {
+  const parts = keyPath.split('.')
+  let current: unknown = config
+  for (const part of parts) {
+    if (current === undefined || current === null || typeof current !== 'object') return undefined
+    current = (current as Record<string, unknown>)[part]
+  }
+  return current as Record<string, unknown> | undefined
+}
+
+/** Ensure all intermediate objects exist for a dot-separated key path, then set the value. */
+function setAtKeyPath(config: Record<string, unknown>, keyPath: string, value: unknown): void {
+  const parts = keyPath.split('.')
+  let current: Record<string, unknown> = config
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!current[parts[i]] || typeof current[parts[i]] !== 'object') {
+      current[parts[i]] = {}
+    }
+    current = current[parts[i]] as Record<string, unknown>
+  }
+  current[parts[parts.length - 1]] = value
+}
+
+/** Check if piut-context is already configured in a config file.
+ *  configKey supports dot-separated paths (e.g., "mcp.servers"). */
 export function isPiutConfigured(filePath: string, configKey: string): boolean {
   const config = readConfig(filePath)
   if (!config) return false
-  const servers = config[configKey] as Record<string, unknown> | undefined
+  const servers = resolveKeyPath(config, configKey)
   return !!servers?.['piut-context']
 }
 
-/** Merge piut-context into an existing config, preserving all other content. */
+/** Merge piut-context into an existing config, preserving all other content.
+ *  configKey supports dot-separated paths (e.g., "mcp.servers"). */
 export function mergeConfig(
   filePath: string,
   configKey: string,
   serverConfig: Record<string, unknown>
 ): void {
   const existing = readConfig(filePath) || {}
-  const servers = (existing[configKey] as Record<string, unknown>) || {}
+  const servers = (resolveKeyPath(existing, configKey) || {}) as Record<string, unknown>
 
   servers['piut-context'] = serverConfig
-  existing[configKey] = servers
+  setAtKeyPath(existing, configKey, servers)
 
   writeConfig(filePath, existing)
 }
 
-/** Extract the piut-context server config object from a tool's config file. */
+/** Extract the piut-context server config object from a tool's config file.
+ *  configKey supports dot-separated paths (e.g., "mcp.servers"). */
 export function getPiutConfig(filePath: string, configKey: string): Record<string, unknown> | null {
   const config = readConfig(filePath)
   if (!config) return null
-  const servers = config[configKey] as Record<string, unknown> | undefined
+  const servers = resolveKeyPath(config, configKey)
   const piut = servers?.['piut-context'] as Record<string, unknown> | undefined
   return piut ?? null
 }
@@ -136,17 +163,19 @@ export function extractSlugFromConfig(piutConfig: Record<string, unknown>): stri
   return null
 }
 
-/** Remove piut-context from a config file. Returns true if found and removed. */
+/** Remove piut-context from a config file. Returns true if found and removed.
+ *  configKey supports dot-separated paths (e.g., "mcp.servers"). */
 export function removeFromConfig(filePath: string, configKey: string): boolean {
   const config = readConfig(filePath)
   if (!config) return false
 
-  const servers = config[configKey] as Record<string, unknown> | undefined
+  const servers = resolveKeyPath(config, configKey)
   if (!servers?.['piut-context']) return false
 
   delete servers['piut-context']
 
-  if (Object.keys(servers).length === 0) {
+  // Clean up empty parent objects for simple (non-nested) keys
+  if (Object.keys(servers).length === 0 && !configKey.includes('.')) {
     delete config[configKey]
   }
 

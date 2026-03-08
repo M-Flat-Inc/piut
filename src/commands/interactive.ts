@@ -22,6 +22,11 @@ import { PROJECT_SKILL_SNIPPET } from '../lib/skill.js'
 import { CliError } from '../types.js'
 import type { ValidateResponse, ProjectInfo } from '../types.js'
 
+/** Document formats that require server-side parsing (sent as base64). */
+const DOCUMENT_EXTENSIONS = new Set([
+  'pdf', 'docx', 'doc', 'pptx', 'pages', 'key', 'rtf', 'odt', 'odp', 'eml', 'mbox',
+])
+
 interface AuthResult {
   apiKey: string
   validation: ValidateResponse
@@ -297,17 +302,17 @@ async function handleUndeploy(apiKey: string): Promise<void> {
 async function handleConnectTools(apiKey: string, validation: ValidateResponse): Promise<void> {
   const { slug } = validation
 
-  type DetectedItem = { tool: (typeof TOOLS)[0]; configPath: string; connected: boolean }
+  type DetectedItem = { tool: (typeof TOOLS)[0]; configPath: string; resolvedConfigKey: string; connected: boolean }
   const detected: DetectedItem[] = []
 
   for (const tool of TOOLS) {
-    const paths = resolveConfigPaths(tool.configPaths)
-    for (const configPath of paths) {
-      const exists = fs.existsSync(configPath)
-      const parentExists = fs.existsSync(path.dirname(configPath))
+    const paths = resolveConfigPaths(tool)
+    for (const { filePath, configKey } of paths) {
+      const exists = fs.existsSync(filePath)
+      const parentExists = fs.existsSync(path.dirname(filePath))
       if (exists || parentExists) {
-        const connected = exists && !!tool.configKey && isPiutConfigured(configPath, tool.configKey)
-        detected.push({ tool, configPath, connected })
+        const connected = exists && !!configKey && isPiutConfigured(filePath, configKey)
+        detected.push({ tool, configPath: filePath, resolvedConfigKey: configKey, connected })
         break
       }
     }
@@ -367,19 +372,19 @@ async function handleConnectTools(apiKey: string, validation: ValidateResponse):
   console.log()
 
   // Connect new tools
-  for (const { tool, configPath } of toConnect) {
-    if (tool.generateConfig && tool.configKey) {
+  for (const { tool, configPath, resolvedConfigKey } of toConnect) {
+    if (tool.generateConfig && resolvedConfigKey) {
       const serverConfig = tool.generateConfig(slug, apiKey)
-      mergeConfig(configPath, tool.configKey, serverConfig)
+      mergeConfig(configPath, resolvedConfigKey, serverConfig)
       toolLine(tool.name, success('connected'), '\u2714')
     }
   }
 
   // Disconnect removed tools
   const removedNames: string[] = []
-  for (const { tool, configPath } of toDisconnect) {
-    if (!tool.configKey) continue
-    const removed = removeFromConfig(configPath, tool.configKey)
+  for (const { tool, configPath, resolvedConfigKey } of toDisconnect) {
+    if (!resolvedConfigKey) continue
+    const removed = removeFromConfig(configPath, resolvedConfigKey)
     if (removed) {
       removedNames.push(tool.name)
       toolLine(tool.name, warning('disconnected'), '\u2714')
@@ -643,33 +648,54 @@ async function handleVaultView(apiKey: string): Promise<void> {
 }
 
 async function handleVaultUpload(apiKey: string): Promise<void> {
-  const { input } = await import('@inquirer/prompts')
-  const filePath = await input({ message: 'File path:' })
-  if (!filePath.trim()) return
+  const treePrompt = (await import('../lib/tree-prompt.js')).default
 
-  const resolved = path.resolve(filePath)
-  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
-    console.log(chalk.red(`  File not found: ${filePath}`))
+  const files = await treePrompt({
+    message: 'Select files to upload:',
+    mode: 'files',
+  })
+
+  if (files.length === 0) {
+    console.log(dim('  No files selected.'))
     console.log()
     return
   }
 
-  const filename = path.basename(resolved)
-  const content = fs.readFileSync(resolved, 'utf-8')
+  console.log()
+  let uploaded = 0
+  for (const filePath of files) {
+    const filename = path.basename(filePath)
+    const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() || '' : ''
+    const isDocument = DOCUMENT_EXTENSIONS.has(ext)
 
-  const spinner = new Spinner()
-  spinner.start(`Uploading ${filename}...`)
-  try {
-    const result = await uploadVaultFile(apiKey, filename, content)
-    spinner.stop()
-    console.log(success(`  Uploaded ${result.filename}`) + dim(` (${formatSize(result.sizeBytes)})`))
-    if (result.summary) console.log(dim(`  ${result.summary}`))
-    console.log()
-  } catch (err: unknown) {
-    spinner.stop()
-    console.log(chalk.red(`  ${(err as Error).message}`))
-    console.log()
+    let content: string
+    let encoding: 'base64' | 'utf8' | undefined
+    if (isDocument) {
+      content = fs.readFileSync(filePath).toString('base64')
+      encoding = 'base64'
+    } else {
+      content = fs.readFileSync(filePath, 'utf-8')
+    }
+
+    const spinner = new Spinner()
+    spinner.start(`Uploading ${filename}...`)
+    try {
+      const result = await uploadVaultFile(apiKey, filename, content, encoding)
+      spinner.stop()
+      console.log(success(`  Uploaded ${result.filename}`) + dim(` (${formatSize(result.sizeBytes)})`))
+      if (result.summary) console.log(dim(`  ${result.summary}`))
+      uploaded++
+    } catch (err: unknown) {
+      spinner.stop()
+      console.log(chalk.red(`  ${(err as Error).message}`))
+    }
   }
+
+  if (uploaded > 0) {
+    console.log()
+    console.log(success(`  ${uploaded} file${uploaded === 1 ? '' : 's'} uploaded to vault.`))
+  }
+  console.log()
 }
 
 // ---------------------------------------------------------------------------

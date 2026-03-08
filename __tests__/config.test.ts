@@ -214,6 +214,85 @@ describe('extractKeyFromConfig', () => {
   })
 })
 
+describe('nested key paths (VS Code settings.json)', () => {
+  it('isPiutConfigured works with dot-separated key path', () => {
+    const file = tmpFile('settings.json')
+    writeConfig(file, {
+      'editor.fontSize': 14,
+      mcp: {
+        servers: {
+          'piut-context': { type: 'http', url: 'https://piut.com/api/mcp/test' },
+        },
+      },
+    })
+    expect(isPiutConfigured(file, 'mcp.servers')).toBe(true)
+    expect(isPiutConfigured(file, 'servers')).toBe(false)
+  })
+
+  it('getPiutConfig works with dot-separated key path', () => {
+    const file = tmpFile('settings.json')
+    const piutConfig = { type: 'http', url: 'https://piut.com/api/mcp/test' }
+    writeConfig(file, {
+      mcp: { servers: { 'piut-context': piutConfig } },
+    })
+    expect(getPiutConfig(file, 'mcp.servers')).toEqual(piutConfig)
+  })
+
+  it('mergeConfig creates nested structure from dot-separated key', () => {
+    const file = tmpFile('settings.json')
+    writeConfig(file, { 'editor.fontSize': 14 })
+    mergeConfig(file, 'mcp.servers', { type: 'http', url: 'https://piut.com/api/mcp/test' })
+    const result = readConfig(file)
+    expect(result).toEqual({
+      'editor.fontSize': 14,
+      mcp: {
+        servers: {
+          'piut-context': { type: 'http', url: 'https://piut.com/api/mcp/test' },
+        },
+      },
+    })
+  })
+
+  it('mergeConfig preserves existing servers in nested structure', () => {
+    const file = tmpFile('settings.json')
+    writeConfig(file, {
+      mcp: {
+        servers: {
+          'other-server': { type: 'http', url: 'https://other.com' },
+        },
+      },
+    })
+    mergeConfig(file, 'mcp.servers', { type: 'http', url: 'https://piut.com/api/mcp/test' })
+    const result = readConfig(file)
+    expect(result?.mcp).toEqual({
+      servers: {
+        'other-server': { type: 'http', url: 'https://other.com' },
+        'piut-context': { type: 'http', url: 'https://piut.com/api/mcp/test' },
+      },
+    })
+  })
+
+  it('removeFromConfig works with dot-separated key path', () => {
+    const file = tmpFile('settings.json')
+    writeConfig(file, {
+      'editor.fontSize': 14,
+      mcp: {
+        servers: {
+          'piut-context': { type: 'http', url: 'https://piut.com/api/mcp/test' },
+          'other-server': { type: 'http', url: 'https://other.com' },
+        },
+      },
+    })
+    expect(removeFromConfig(file, 'mcp.servers')).toBe(true)
+    const result = readConfig(file)
+    // Other settings preserved, piut-context removed, other-server kept
+    expect(result?.['editor.fontSize']).toBe(14)
+    expect((result?.mcp as Record<string, unknown>)?.servers).toEqual({
+      'other-server': { type: 'http', url: 'https://other.com' },
+    })
+  })
+})
+
 describe('removeFromConfig', () => {
   it('returns false for missing files', () => {
     expect(removeFromConfig(tmpFile('missing.json'), 'mcpServers')).toBe(false)

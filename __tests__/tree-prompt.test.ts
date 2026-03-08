@@ -104,13 +104,48 @@ describe('loadChildren', () => {
     expect(children[0].depth).toBe(3)
   })
 
-  it('skips files (only directories)', () => {
+  it('skips files by default (only directories)', () => {
     fs.mkdirSync(path.join(tmpDir, 'folder'))
     fs.writeFileSync(path.join(tmpDir, 'file.txt'), 'content')
 
     const children = loadChildren(tmpDir, 0)
     expect(children).toHaveLength(1)
     expect(children[0].name).toBe('folder')
+  })
+
+  it('includes files when includeFiles is true', () => {
+    fs.mkdirSync(path.join(tmpDir, 'folder'))
+    fs.writeFileSync(path.join(tmpDir, 'notes.md'), '# Notes')
+    fs.writeFileSync(path.join(tmpDir, 'data.csv'), 'a,b,c')
+
+    const children = loadChildren(tmpDir, 0, true)
+    // folder first, then files sorted alphabetically
+    expect(children.length).toBe(3)
+    expect(children[0].name).toBe('folder')
+    expect(children[0].isFile).toBeUndefined()
+    expect(children[1].name).toBe('data.csv')
+    expect(children[1].isFile).toBe(true)
+    expect(children[2].name).toBe('notes.md')
+    expect(children[2].isFile).toBe(true)
+  })
+
+  it('hides binary files from file listing', () => {
+    fs.writeFileSync(path.join(tmpDir, 'photo.png'), 'fake')
+    fs.writeFileSync(path.join(tmpDir, 'archive.zip'), 'fake')
+    fs.writeFileSync(path.join(tmpDir, 'readme.md'), '# Hi')
+
+    const children = loadChildren(tmpDir, 0, true)
+    expect(children).toHaveLength(1)
+    expect(children[0].name).toBe('readme.md')
+  })
+
+  it('hides dotfiles from file listing', () => {
+    fs.writeFileSync(path.join(tmpDir, '.hidden'), 'secret')
+    fs.writeFileSync(path.join(tmpDir, 'visible.txt'), 'hello')
+
+    const children = loadChildren(tmpDir, 0, true)
+    expect(children).toHaveLength(1)
+    expect(children[0].name).toBe('visible.txt')
   })
 
   it('filters out skip directories', () => {

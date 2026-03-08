@@ -63,9 +63,9 @@ export function detectInstalledTools(): InstalledTool[] {
   const installed: InstalledTool[] = []
 
   for (const tool of TOOLS) {
-    const paths = resolveConfigPaths(tool.configPaths)
-    for (const configPath of paths) {
-      if (fs.existsSync(configPath) || fs.existsSync(path.dirname(configPath))) {
+    const paths = resolveConfigPaths(tool)
+    for (const { filePath } of paths) {
+      if (fs.existsSync(filePath) || fs.existsSync(path.dirname(filePath))) {
         installed.push({ name: tool.name, id: tool.id })
         break
       }

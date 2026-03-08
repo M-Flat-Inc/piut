@@ -7,6 +7,11 @@ import { readStore } from '../lib/store.js'
 import { banner, success, dim, warning, brand, Spinner } from '../lib/ui.js'
 import { CliError } from '../types.js'
 
+/** Document formats that require server-side parsing (sent as base64). */
+const DOCUMENT_EXTENSIONS = new Set([
+  'pdf', 'docx', 'doc', 'pptx', 'pages', 'key', 'rtf', 'odt', 'odp', 'eml', 'mbox',
+])
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -76,13 +81,23 @@ export async function vaultUploadCommand(
   }
 
   const filename = path.basename(resolved)
-  const content = fs.readFileSync(resolved, 'utf-8')
+  const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() || '' : ''
+  const isDocument = DOCUMENT_EXTENSIONS.has(ext)
+
+  let content: string
+  let encoding: 'base64' | 'utf8' | undefined
+  if (isDocument) {
+    content = fs.readFileSync(resolved).toString('base64')
+    encoding = 'base64'
+  } else {
+    content = fs.readFileSync(resolved, 'utf-8')
+  }
 
   const spinner = new Spinner()
   spinner.start(`Uploading ${filename}...`)
 
   try {
-    const result = await uploadVaultFile(key, filename, content)
+    const result = await uploadVaultFile(key, filename, content, encoding)
     spinner.stop()
 
     console.log(success(`  Uploaded ${result.filename}`) + dim(` (${formatSize(result.sizeBytes)})`))

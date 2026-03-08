@@ -15,7 +15,7 @@ import { interactiveMenu } from './commands/interactive.js'
 import { checkForUpdate } from './lib/update-check.js'
 import { CliError } from './types.js'
 
-const VERSION = '3.7.0'
+const VERSION = '3.8.0'
 
 /**
  * Wrap a command action so that CliError (thrown instead of process.exit(1)
@@ -47,9 +47,8 @@ program
 
 program
   .command('build')
-  .description('Build or rebuild your brain from your files')
+  .description('Build or rebuild your brain from your AI config files')
   .option('-k, --key <key>', 'API key')
-  .option('--folders <paths>', 'Comma-separated folder paths to scan')
   .option('-y, --yes', 'Auto-publish after build')
   .option('--no-publish', 'Skip publish prompt after build')
   .action(withExit(buildCommand))

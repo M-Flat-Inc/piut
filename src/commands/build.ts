@@ -6,23 +6,18 @@ import {
   detectProjects,
   collectGlobalConfigFiles,
   collectProjectConfigFiles,
-  scanFilesInDirs,
   getDefaultScanDirs,
+  formatSize,
   MAX_BRAIN_INPUT_BYTES,
 } from '../lib/brain-scanner.js'
 import type { ScanProgress } from '../lib/brain-scanner.js'
-import type { ParsedFile } from '../lib/file-parsers.js'
-import { formatSize } from '../lib/file-parsers.js'
-import treePrompt from '../lib/tree-prompt.js'
 import { banner, brand, success, dim, Spinner } from '../lib/ui.js'
 import { resolveApiKeyWithResult } from '../lib/auth.js'
-import { expandPath } from '../lib/paths.js'
 import { CliError } from '../types.js'
 import type { BuildBrainInput } from '../types.js'
 
 interface BuildOptions {
   key?: string
-  folders?: string
   yes?: boolean
   publish?: boolean
 }
@@ -33,17 +28,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   const { apiKey, serverUrl } = await resolveApiKeyWithResult(options.key)
 
   // =========================================================================
-  // --folders flag: scan ALL parseable files in specified dirs (power user)
-  // =========================================================================
-
-  if (options.folders) {
-    const scanDirs = options.folders.split(',').map(f => expandPath(f.trim()))
-    await runFullScan(scanDirs, apiKey, serverUrl, options)
-    return
-  }
-
-  // =========================================================================
-  // Phase A: Auto-scan for AI config files (local, fast)
+  // Phase A: Auto-scan for AI config files + detect projects (local, fast)
   // =========================================================================
 
   console.log(dim('  ━━━ BUILD YOUR BRAIN ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'))
@@ -77,59 +62,17 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   }
 
   // =========================================================================
-  // Phase B: Optional manual folder add
+  // Phase B: Size check
   // =========================================================================
 
-  let manualFiles: ParsedFile[] = []
-
-  if (!options.yes) {
-    console.log()
-    const addMore = await confirm({
-      message: 'Add additional folders to scan?',
-      default: false,
-    })
-
-    if (addMore) {
-      const folders = await treePrompt({
-        message: 'Select folders:',
-        root: os.homedir(),
-      })
-
-      if (folders.length > 0) {
-        console.log()
-        console.log(dim('  Scanning selected folders...'))
-        console.log()
-
-        let fileCount = 0
-        const scanProgress = (progress: ScanProgress) => {
-          if (progress.phase === 'scanning') {
-            console.log(dim(`  ${progress.message}`))
-          } else if (progress.phase === 'parsing') {
-            fileCount++
-            console.log(dim(`    [${fileCount}] ${progress.message}`))
-          }
-        }
-
-        manualFiles = await scanFilesInDirs(folders, scanProgress)
-        console.log()
-        console.log(success(`  ✓ Found ${manualFiles.length} file${manualFiles.length === 1 ? '' : 's'} in selected folders`))
-      }
-    }
-  }
-
-  // =========================================================================
-  // Phase C: 1MB cap enforcement
-  // =========================================================================
-
-  const configBytes = allConfigs.reduce((sum, c) => sum + Buffer.byteLength(c.content, 'utf-8'), 0)
-  const manualBytes = manualFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
-  const totalBytes = configBytes + manualBytes
-  const totalFiles = allConfigs.length + manualFiles.length
+  const totalBytes = allConfigs.reduce((sum, c) => sum + Buffer.byteLength(c.content, 'utf-8'), 0)
+  const totalFiles = allConfigs.length
 
   if (totalFiles === 0) {
     console.log()
-    console.log(chalk.yellow('  No files found to build your brain.'))
-    console.log(dim('  Try adding folders with additional content, or use --folders to specify paths.'))
+    console.log(chalk.yellow('  No config files found to build your brain.'))
+    console.log(dim('  Add AI config files (CLAUDE.md, .cursorrules, etc.) to your projects,'))
+    console.log(dim('  or upload documents via: piut vault upload <file>'))
     console.log()
     return
   }
@@ -137,23 +80,21 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   if (totalBytes > MAX_BRAIN_INPUT_BYTES) {
     console.log()
     console.log(chalk.yellow(`  Total data: ${formatSize(totalBytes)} exceeds the 1MB limit.`))
-    console.log(dim('  Try selecting fewer folders or use --folders to specify specific directories.'))
     console.log()
     return
   }
 
   // =========================================================================
-  // Phase D: Consent Gate (before any network call)
+  // Phase C: Consent Gate (before any network call)
   // =========================================================================
 
   if (!options.yes) {
     console.log()
     console.log(dim('  ━━━ READY TO BUILD ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'))
     console.log()
-    console.log(dim(`  ${totalFiles} file${totalFiles === 1 ? '' : 's'} (${formatSize(totalBytes)}) will be sent to p\u0131ut and`))
-    console.log(dim('  processed by Claude Sonnet to design your brain.'))
+    console.log(dim(`  ${totalFiles} file${totalFiles === 1 ? '' : 's'} (${formatSize(totalBytes)}) will be processed by Claude Sonnet to design your brain.`))
     console.log(dim('  File contents are used for brain generation only and'))
-    console.log(dim('  are not retained.'))
+    console.log(dim(`  are not retained by p\u0131ut.`))
     console.log()
     console.log(dim(`  Privacy policy: ${brand('https://piut.com/privacy')}`))
     console.log()
@@ -172,135 +113,27 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   }
 
   // =========================================================================
-  // Phase E: Build brain
+  // Phase D: Build brain
   // =========================================================================
 
-  const brainInput = buildInput(allConfigs, manualFiles, projects)
-
-  await streamBuild(apiKey, serverUrl, brainInput, options)
-}
-
-// ---------------------------------------------------------------------------
-// --folders path: full scan of specified directories (existing behavior)
-// ---------------------------------------------------------------------------
-
-async function runFullScan(
-  scanDirs: string[],
-  apiKey: string,
-  serverUrl: string,
-  options: BuildOptions,
-): Promise<void> {
-  console.log(dim('  ━━━ BUILD YOUR BRAIN ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'))
-  console.log()
-  console.log(dim('  Scanning specified folders...'))
-  console.log()
-
-  let fileCount = 0
-  const onProgress = (progress: ScanProgress) => {
-    if (progress.phase === 'scanning') {
-      console.log(dim(`  ${progress.message}`))
-    } else if (progress.phase === 'parsing') {
-      fileCount++
-      console.log(dim(`    [${fileCount}] ${progress.message}`))
-    } else if (progress.phase === 'projects') {
-      console.log(dim(`  [project] ${progress.message}`))
-    } else if (progress.phase === 'configs') {
-      console.log(dim(`  [config] ${progress.message}`))
-    }
-  }
-
-  const allFiles = await scanFilesInDirs(scanDirs, onProgress)
-  const projects = detectProjects(scanDirs, onProgress)
-  const globalConfigs = collectGlobalConfigFiles(onProgress)
-  const projectConfigs = collectProjectConfigFiles(projects, onProgress)
-  const allConfigs = [...globalConfigs, ...projectConfigs]
-
-  const configBytes = allConfigs.reduce((sum, c) => sum + Buffer.byteLength(c.content, 'utf-8'), 0)
-  const manualBytes = allFiles.reduce((sum, f) => sum + f.sizeBytes, 0)
-  const totalBytes = configBytes + manualBytes
-  const totalFiles = allConfigs.length + allFiles.length
-
-  console.log()
-  console.log(success(`  ✓ Scan complete: ${totalFiles} files found (${formatSize(totalBytes)})`))
-
-  if (totalFiles === 0) {
-    console.log(chalk.yellow('  No parseable files found in the selected folders.'))
-    console.log(dim('  Try scanning a different directory.'))
-    console.log()
-    return
-  }
-
-  if (totalBytes > MAX_BRAIN_INPUT_BYTES) {
-    console.log()
-    console.log(chalk.yellow(`  Total data: ${formatSize(totalBytes)} exceeds the 1MB limit.`))
-    console.log(dim('  Try selecting fewer or smaller directories.'))
-    console.log()
-    return
-  }
-
-  if (!options.yes) {
-    console.log()
-    console.log(dim(`  ${totalFiles} file${totalFiles === 1 ? '' : 's'} (${formatSize(totalBytes)}) will be sent to p\u0131ut and`))
-    console.log(dim('  processed by Claude Sonnet to design your brain.'))
-    console.log()
-
-    const consent = await confirm({
-      message: 'Send files and build your brain?',
-      default: false,
-    })
-
-    if (!consent) {
-      console.log()
-      console.log(dim('  Build cancelled. No files were sent.'))
-      console.log()
-      return
-    }
-  }
-
-  const brainInput = buildInput(allConfigs, allFiles, projects)
-  await streamBuild(apiKey, serverUrl, brainInput, options)
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function buildInput(
-  configFiles: { name: string; content: string }[],
-  manualFiles: ParsedFile[],
-  projects: { name: string; path: string; description: string }[],
-): BuildBrainInput {
   const home = os.homedir()
-
-  const personalDocuments = manualFiles.map(f => ({
-    name: f.displayPath,
-    content: f.content,
-    format: f.format,
-  }))
-
-  const folderTree: string[] = []
-  const seenFolders = new Set<string>()
-  for (const f of manualFiles) {
-    if (!seenFolders.has(f.folder)) {
-      seenFolders.add(f.folder)
-      folderTree.push(`${f.folder}/ (scanned)`)
-    }
-  }
-
-  return {
+  const brainInput: BuildBrainInput = {
     summary: {
-      folders: folderTree,
       projects: projects.map(p => ({
         name: p.name,
         path: p.path.replace(home, '~'),
         description: p.description,
       })),
-      configFiles,
-      recentDocuments: [],
-      personalDocuments,
+      configFiles: allConfigs,
     },
   }
+
+  await streamBuild(apiKey, serverUrl, brainInput, options)
 }
+
+// ---------------------------------------------------------------------------
+// Stream build response
+// ---------------------------------------------------------------------------
 
 async function streamBuild(
   apiKey: string,
@@ -423,10 +256,7 @@ async function streamBuild(
     spinner.stop()
     if (err instanceof CliError) throw err
     const msg = (err as Error).message || 'Unknown error'
-    const hint = msg === 'terminated' || msg.includes('network') || msg.includes('fetch')
-      ? 'The build was interrupted. This can happen if your scan data is very large. Try using --folders to limit which directories are scanned.'
-      : msg
-    console.log(chalk.red(`  ✗ ${hint}`))
-    throw new CliError(hint)
+    console.log(chalk.red(`  ✗ ${msg}`))
+    throw new CliError(msg)
   }
 }

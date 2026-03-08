@@ -10,14 +10,14 @@ import { deleteConnections } from '../lib/api.js'
 export async function removeCommand(): Promise<void> {
   banner()
 
-  const configured: { tool: (typeof TOOLS)[0]; configPath: string }[] = []
+  const configured: { tool: (typeof TOOLS)[0]; configPath: string; resolvedConfigKey: string }[] = []
 
   for (const tool of TOOLS) {
     if (!tool.configKey) continue // Skip skill-only tools
-    const paths = resolveConfigPaths(tool.configPaths)
-    for (const configPath of paths) {
-      if (fs.existsSync(configPath) && isPiutConfigured(configPath, tool.configKey)) {
-        configured.push({ tool, configPath })
+    const paths = resolveConfigPaths(tool)
+    for (const { filePath, configKey } of paths) {
+      if (fs.existsSync(filePath) && isPiutConfigured(filePath, configKey)) {
+        configured.push({ tool, configPath: filePath, resolvedConfigKey: configKey })
         break
       }
     }
@@ -53,9 +53,9 @@ export async function removeCommand(): Promise<void> {
 
   console.log()
   const removedNames: string[] = []
-  for (const { tool, configPath } of selected) {
-    if (!tool.configKey) continue
-    const removed = removeFromConfig(configPath, tool.configKey)
+  for (const { tool, configPath, resolvedConfigKey } of selected) {
+    if (!resolvedConfigKey) continue
+    const removed = removeFromConfig(configPath, resolvedConfigKey)
     if (removed) {
       removedNames.push(tool.name)
       toolLine(tool.name, success('removed'), '\u2714')
