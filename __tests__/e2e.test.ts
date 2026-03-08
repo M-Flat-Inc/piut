@@ -749,18 +749,18 @@ describe('connect command', () => {
     expect(fs.existsSync(path.join(projectDir, 'CLAUDE.md'))).toBe(false)
   })
 
-  it('writes Copilot .vscode/mcp.json for projects with .github/', async () => {
-    const projectDir = path.join(tmpHome, 'Projects', 'copilot-test')
+  it('writes VS Code .vscode/mcp.json for projects with .github/', async () => {
+    const projectDir = path.join(tmpHome, 'Projects', 'vscode-test')
     fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
     fs.mkdirSync(path.join(projectDir, '.github'), { recursive: true })
-    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'copilot-test' }))
+    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'vscode-test' }))
 
     const { stdout, exitCode } = await runAsync(
       ['connect', '--key', 'pb_valid_test_key', '--yes', '--folders', path.join(tmpHome, 'Projects')],
       { env: apiEnv() }
     )
     expect(exitCode).toBe(0)
-    expect(stdout).toContain('Copilot MCP')
+    expect(stdout).toContain('VS Code MCP')
 
     const vscodeMcp = path.join(projectDir, '.vscode', 'mcp.json')
     expect(fs.existsSync(vscodeMcp)).toBe(true)
@@ -862,10 +862,10 @@ describe('disconnect command', () => {
     expect(fs.existsSync(path.join(projectDir, '.piut'))).toBe(false)
   })
 
-  it('removes Copilot piut-context from .vscode/mcp.json on disconnect', async () => {
-    const projectDir = path.join(tmpHome, 'Projects', 'copilot-disconnect')
+  it('removes VS Code piut-context from .vscode/mcp.json on disconnect', async () => {
+    const projectDir = path.join(tmpHome, 'Projects', 'vscode-disconnect')
     fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
-    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'copilot-disconnect' }))
+    fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'vscode-disconnect' }))
 
     // Create .vscode/mcp.json with piut-context
     fs.mkdirSync(path.join(projectDir, '.vscode'), { recursive: true })

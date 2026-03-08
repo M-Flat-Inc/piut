@@ -50,7 +50,7 @@ export const RULE_FILES: RuleFileConfig[] = [
     detect: (p) => p.hasWindsurfRules || fs.existsSync(path.join(p.path, '.windsurf')),
   },
   {
-    tool: 'GitHub Copilot',
+    tool: 'VS Code',
     filePath: '.github/copilot-instructions.md',
     strategy: 'append',
     detect: (p) => p.hasCopilotInstructions || fs.existsSync(path.join(p.path, '.github')),
@@ -273,7 +273,7 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
   // Apply
   console.log()
   let connected = 0
-  const copilotTool = TOOLS.find(t => t.id === 'copilot')
+  const vscodeTool = TOOLS.find(t => t.id === 'vscode')
 
   for (const projectPath of selectedPaths) {
     const projectActions = byProject.get(projectPath) || []
@@ -286,14 +286,14 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
     console.log(success(`  ✓ ${projectName}/.piut/`) + dim(' — credentials + skill'))
 
     // Write Copilot project-local MCP config if applicable
-    if (copilotTool) {
-      const hasCopilot = fs.existsSync(path.join(projectPath, '.github', 'copilot-instructions.md'))
+    if (vscodeTool) {
+      const hasVscode = fs.existsSync(path.join(projectPath, '.github', 'copilot-instructions.md'))
         || fs.existsSync(path.join(projectPath, '.github'))
-      if (hasCopilot) {
+      if (hasVscode) {
         const vscodeMcpPath = path.join(projectPath, '.vscode', 'mcp.json')
-        const serverConfig = copilotTool.generateConfig(slug, apiKey)
-        mergeConfig(vscodeMcpPath, copilotTool.configKey, serverConfig)
-        console.log(success(`  ✓ ${projectName}/.vscode/mcp.json`) + dim(' — Copilot MCP'))
+        const serverConfig = vscodeTool.generateConfig(slug, apiKey)
+        mergeConfig(vscodeMcpPath, vscodeTool.configKey, serverConfig)
+        console.log(success(`  ✓ ${projectName}/.vscode/mcp.json`) + dim(' — VS Code MCP'))
       }
     }
 

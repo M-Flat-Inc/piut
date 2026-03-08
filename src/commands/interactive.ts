@@ -18,6 +18,7 @@ import { resolveConfigPaths } from '../lib/paths.js'
 import { isPiutConfigured, mergeConfig, removeFromConfig } from '../lib/config.js'
 import { scanForProjects } from '../lib/brain-scanner.js'
 import { writePiutConfig, writePiutSkill, ensureGitignored, hasPiutDir, removePiutDir } from '../lib/piut-dir.js'
+import { syncStaleConfigs } from '../lib/sync.js'
 import { PROJECT_SKILL_SNIPPET } from '../lib/skill.js'
 import { CliError } from '../types.js'
 import type { ValidateResponse, ProjectInfo } from '../types.js'
@@ -79,6 +80,17 @@ export async function interactiveMenu(): Promise<void> {
   const auth = await authenticate()
   apiKey = auth.apiKey
   currentValidation = auth.validation
+
+  // Silently fix any tool/project configs with stale keys or slugs
+  const synced = syncStaleConfigs(
+    currentValidation.slug,
+    apiKey,
+    currentValidation.serverUrl,
+  )
+  if (synced.length > 0) {
+    console.log(dim(`  Updated ${synced.length} stale config(s): ${synced.join(', ')}`))
+  }
+
   console.log()
 
   // Guide user through onboarding if brain isn't set up yet

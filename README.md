@@ -169,7 +169,7 @@ Three ways to connect your brain to your AI tools:
 
 For scripting: `piut setup --key pb_YOUR_KEY --yes`
 
-**Supported tools:** Claude Code, Claude Desktop, Cursor, Windsurf, GitHub Copilot, Amazon Q, Zed, ChatGPT, OpenClaw, Msty, OpenAI Agents SDK, Claude Agent SDK, and any MCP client.
+**Supported tools:** Claude Code, Claude Desktop, Cursor, Windsurf, VS Code, Amazon Q, Zed, ChatGPT, OpenClaw, Msty, OpenAI Agents SDK, Claude Agent SDK, and any MCP client.
 
 ### skill.md Reference
 
@@ -180,7 +180,7 @@ Add a reference to [skill.md](skill.md) in your tool's rules file so your AI kno
 | Claude Code | CLAUDE.md or ~/.claude/CLAUDE.md |
 | Cursor | .cursor/rules/piut.mdc |
 | Windsurf | .windsurf/rules/piut.md |
-| GitHub Copilot | .github/copilot-instructions.md |
+| VS Code | .github/copilot-instructions.md |
 | Claude Desktop | Project Knowledge (upload file) |
 | ChatGPT | Settings > Custom Instructions |
 | Zed | .zed/rules.md |
@@ -224,7 +224,7 @@ piut sync --pull       # Pull cloud changes
 | `AGENTS.md` | Multi-agent | Repo root |
 | `.cursorrules` | Cursor | Repo root |
 | `.windsurfrules` | Windsurf | Repo root |
-| `copilot-instructions.md` | GitHub Copilot | .github/ |
+| `copilot-instructions.md` | VS Code | .github/ |
 | `MEMORY.md` | Claude Code | ~/.claude/ |
 | `SOUL.md` | OpenClaw | ~/.openclaw/workspace/ |
 | `rules/*.md` | Various | .cursor/rules/, .claude/rules/ |

@@ -132,7 +132,7 @@ export async function disconnectCommand(options: DisconnectOptions): Promise<voi
       })
     }
 
-    // Check .vscode/mcp.json for Copilot MCP config
+    // Check .vscode/mcp.json for VS Code MCP config
     const vscodeMcpPath = path.join(project.path, '.vscode', 'mcp.json')
     if (fs.existsSync(vscodeMcpPath) && isPiutConfigured(vscodeMcpPath, 'servers')) {
       actions.push({

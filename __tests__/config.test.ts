@@ -164,8 +164,8 @@ describe('getPiutConfig', () => {
     expect(getPiutConfig(file, 'mcpServers')).toEqual(piutConfig)
   })
 
-  it('works with servers key (GitHub Copilot)', () => {
-    const file = tmpFile('copilot.json')
+  it('works with servers key (VS Code)', () => {
+    const file = tmpFile('vscode.json')
     const piutConfig = { type: 'http', url: 'https://piut.com/api/mcp/test' }
     writeConfig(file, { servers: { 'piut-context': piutConfig } })
     expect(getPiutConfig(file, 'servers')).toEqual(piutConfig)

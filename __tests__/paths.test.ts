@@ -54,21 +54,21 @@ describe('resolveConfigPaths', () => {
     expect(paths).toEqual([])
   })
 
-  it('uses globalConfigKey for global paths', () => {
+  it('uses globalConfigKey for global paths when set', () => {
     const paths = resolveConfigPaths({
       configPaths: {
         darwin: ['~/Library/settings.json'],
         project: ['.vscode/mcp.json'],
       },
       configKey: 'servers',
-      globalConfigKey: 'mcp.servers',
+      globalConfigKey: 'nested.servers',
     })
 
     // On macOS, should have 2 paths
     if (process.platform === 'darwin') {
       expect(paths.length).toBe(2)
       // Global path uses globalConfigKey
-      expect(paths[0].configKey).toBe('mcp.servers')
+      expect(paths[0].configKey).toBe('nested.servers')
       // Project path uses regular configKey
       expect(paths[1].configKey).toBe('servers')
     }

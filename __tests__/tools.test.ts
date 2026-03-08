@@ -44,7 +44,7 @@ describe('TOOLS', () => {
     ['claude-desktop', 'mcpServers'],
     ['cursor', 'mcpServers'],
     ['windsurf', 'mcpServers'],
-    ['copilot', 'servers'],
+    ['vscode', 'servers'],
     ['amazon-q', 'mcpServers'],
     ['zed', 'context_servers'],
     ['gemini-cli', 'mcpServers'],

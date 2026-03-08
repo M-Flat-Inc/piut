@@ -1,11 +1,15 @@
 import { select, input, password } from '@inquirer/prompts'
 import { exec } from 'child_process'
+import http from 'http'
+import crypto from 'crypto'
 import chalk from 'chalk'
 import { validateKey, loginWithEmail } from './api.js'
 import { readStore, updateStore } from './store.js'
 import { success, dim, brand } from './ui.js'
 import { CliError } from '../types.js'
 import type { ValidateResponse } from '../types.js'
+
+const API_BASE = process.env.PIUT_API_BASE || 'https://piut.com'
 
 /** Open a URL in the user's default browser. */
 function openBrowser(url: string): void {
@@ -59,15 +63,108 @@ async function pasteKeyFlow(): Promise<{ apiKey: string; validation: ValidateRes
   return { apiKey, validation }
 }
 
-/** Open the dashboard in browser, then prompt to paste API key. */
+/** Open the browser for OAuth-style login, receive API key via local callback server. */
 async function browserFlow(): Promise<{ apiKey: string; validation: ValidateResponse }> {
-  const url = 'https://piut.com/dashboard/keys'
-  console.log(dim(`  Opening ${brand(url)}...`))
-  openBrowser(url)
-  console.log(dim('  Copy your API key from the dashboard, then paste it here.'))
-  console.log()
+  const state = crypto.randomBytes(16).toString('hex')
 
-  return pasteKeyFlow()
+  return new Promise((resolve, reject) => {
+    let settled = false
+
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url!, `http://localhost`)
+
+      if (url.pathname !== '/callback') {
+        res.writeHead(404)
+        res.end()
+        return
+      }
+
+      const key = url.searchParams.get('key')
+      const returnedState = url.searchParams.get('state')
+
+      // Verify state to prevent CSRF
+      if (returnedState !== state) {
+        res.writeHead(400, { 'Content-Type': 'text/html' })
+        res.end(errorPage('State mismatch. Please try again from the CLI.'))
+        cleanup()
+        if (!settled) { settled = true; reject(new CliError('Browser auth state mismatch')) }
+        return
+      }
+
+      if (!key || !key.startsWith('pb_')) {
+        res.writeHead(400, { 'Content-Type': 'text/html' })
+        res.end(errorPage('No valid API key received.'))
+        cleanup()
+        if (!settled) { settled = true; reject(new CliError('No API key received from browser')) }
+        return
+      }
+
+      // Send success page to browser
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      res.end(successPage())
+      cleanup()
+
+      // Validate the key before resolving
+      validateKey(key)
+        .then(validation => {
+          if (!settled) { settled = true; resolve({ apiKey: key, validation }) }
+        })
+        .catch(err => {
+          if (!settled) { settled = true; reject(err) }
+        })
+    })
+
+    const timer = setTimeout(() => {
+      cleanup()
+      if (!settled) {
+        settled = true
+        reject(new CliError('Browser login timed out after 2 minutes. Please try again.'))
+      }
+    }, 120_000)
+
+    function cleanup() {
+      clearTimeout(timer)
+      server.close()
+    }
+
+    // Listen on a random available port on localhost only
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address() as { port: number }
+      const authUrl = `${API_BASE}/cli/auth?port=${port}&state=${state}`
+      console.log(dim(`  Opening ${brand('piut.com')} in your browser...`))
+      openBrowser(authUrl)
+      console.log(dim('  Waiting for browser authorization...'))
+    })
+
+    server.on('error', (err) => {
+      cleanup()
+      if (!settled) { settled = true; reject(new CliError(`Failed to start callback server: ${err.message}`)) }
+    })
+  })
+}
+
+function successPage(): string {
+  return `<!DOCTYPE html>
+<html><head><title>p\u0131ut CLI</title></head>
+<body style="background:#0a0a0a;color:white;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<div style="text-align:center">
+<div style="font-size:48px;color:#4ade80;margin-bottom:16px">&#10003;</div>
+<h2 style="margin:0 0 8px">CLI Authorized</h2>
+<p style="color:#a3a3a3;margin:0">You can close this tab and return to your terminal.</p>
+</div>
+</body></html>`
+}
+
+function errorPage(message: string): string {
+  return `<!DOCTYPE html>
+<html><head><title>p\u0131ut CLI</title></head>
+<body style="background:#0a0a0a;color:white;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
+<div style="text-align:center">
+<div style="font-size:48px;color:#f87171;margin-bottom:16px">&#10007;</div>
+<h2 style="margin:0 0 8px">Authorization Failed</h2>
+<p style="color:#a3a3a3;margin:0">${message}</p>
+</div>
+</body></html>`
 }
 
 export type AuthMethod = 'email' | 'browser' | 'api-key'
@@ -85,7 +182,7 @@ export async function promptLogin(): Promise<{ apiKey: string; validation: Valid
       {
         name: 'Log in with browser',
         value: 'browser' as const,
-        description: 'Open piut.com to get your API key',
+        description: 'Sign in via piut.com (opens browser)',
       },
       {
         name: 'Paste API key',

@@ -98,21 +98,20 @@ export const TOOLS: ToolDefinition[] = [
     }),
   },
   {
-    id: 'copilot',
-    name: 'GitHub Copilot',
+    id: 'vscode',
+    name: 'VS Code',
     configKey: 'servers',
-    globalConfigKey: 'mcp.servers',
     configPaths: {
-      darwin: ['~/Library/Application Support/Code/User/settings.json'],
-      win32: [path.join(appData(), 'Code', 'User', 'settings.json')],
-      linux: ['~/.config/Code/User/settings.json'],
+      darwin: ['~/Library/Application Support/Code/User/mcp.json'],
+      win32: [path.join(appData(), 'Code', 'User', 'mcp.json')],
+      linux: ['~/.config/Code/User/mcp.json'],
       project: ['.vscode/mcp.json'],
     },
     skillFilePath: '.github/copilot-instructions.md',
     generateConfig: (slug, key) => ({
       type: 'http',
       url: MCP_URL(slug),
-      headers: { ...AUTH_HEADER(key), ...machineHeaders('GitHub Copilot') },
+      headers: { ...AUTH_HEADER(key), ...machineHeaders('VS Code') },
     }),
   },
   {
