@@ -13,7 +13,7 @@ You have access to a pıut context — a persistent personal context MCP server 
 - **Update user context** — integrate substantial new information into the right sections
 - **Clean up outdated info** — delete, reorganize, or edit context on request
 
-**At the start of every conversation, call `get_context`.** Read the `soul` section first — it contains instructions for how this user wants you to behave (tone, guardrails, priorities).
+**REQUIRED FIRST ACTION: Call `get_context` before responding to any message — no exceptions, even for greetings.** Read the `soul` section first — it contains instructions for how this user wants you to behave (tone, guardrails, priorities).
 
 Replace `{{slug}}` with the user's MCP server slug and `{{key}}` with their context key before use.
 
@@ -22,8 +22,10 @@ Replace `{{slug}}` with the user's MCP server slug and `{{key}}` with their cont
 - **Endpoint:** `https://piut.com/api/mcp/{{slug}}`
 - **Auth (URL):** `https://piut.com/api/mcp/{{slug}}?key={{key}}` (key in query param)
 - **Auth (header):** `Authorization: Bearer {{key}}` (keys start with `pb_`)
-- **Protocol:** JSON-RPC 2.0 (MCP)
+- **Protocol:** JSON-RPC 2.0 (MCP), Streamable HTTP (2025-03-26)
 - **Methods:** `initialize`, `tools/list`, `tools/call`, `ping`
+- **Streaming:** Send `Accept: text/event-stream` to receive SSE responses. AI tools (`update_brain`, `prompt_brain`) stream progress and return real results instead of deferring to background.
+- **`_meta` in responses:** `initialize` and `tools/list` responses include `_meta.serverVersion` and `_meta.contentUpdatedAt` (ISO timestamp of last published brain change). Use `contentUpdatedAt` to detect when brain content has changed since your last fetch.
 
 If authentication fails, the user needs to generate a new key at https://piut.com/dashboard/setup.
 
@@ -69,7 +71,7 @@ Get the full context (all 5 sections).
 |-------|------|----------|--------|
 | `format` | string | no | `"markdown"` (default), `"json"` |
 
-Call this at the start of every conversation.
+**Call this before responding to any message.** No exceptions.
 
 ### get_section
 
@@ -186,7 +188,7 @@ Token estimation: ~4 characters = 1 token.
 | -32700 | Invalid JSON |
 | -32600 | Invalid JSON-RPC request |
 | -32601 | Method not found |
-| -32602 | Invalid params / unknown tool |
+| -32602 | Invalid params / unknown tool (includes available tool names + suggestion) |
 | -32001 | Context not found |
 | -32002 | Missing Authorization header |
 | -32003 | Invalid or revoked API key |
@@ -203,6 +205,8 @@ Token estimation: ~4 characters = 1 token.
 | -32014 | Vault file too large |
 | -32015 | Vault storage quota exceeded |
 | -32016 | Unsupported file type |
+
+Unexpected parameters are not rejected but trigger a warning in the response. If you see a "Warning: unexpected parameter(s)" message, check the tool schema via `tools/list`.
 
 ## Best Practices
 
