@@ -13,6 +13,7 @@ import {
 import type { ScanProgress } from '../lib/brain-scanner.js'
 import { banner, brand, success, dim, Spinner } from '../lib/ui.js'
 import { resolveApiKeyWithResult } from '../lib/auth.js'
+import { cycleMcpConfigs } from '../lib/sync.js'
 import { CliError } from '../types.js'
 import type { BuildBrainInput } from '../types.js'
 
@@ -25,7 +26,7 @@ interface BuildOptions {
 export async function buildCommand(options: BuildOptions): Promise<void> {
   banner()
 
-  const { apiKey, serverUrl } = await resolveApiKeyWithResult(options.key)
+  const { apiKey, serverUrl, slug } = await resolveApiKeyWithResult(options.key)
 
   // =========================================================================
   // Phase A: Auto-scan for AI config files + detect projects (local, fast)
@@ -128,7 +129,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     },
   }
 
-  await streamBuild(apiKey, serverUrl, brainInput, options)
+  await streamBuild(apiKey, serverUrl, slug, brainInput, options)
 }
 
 // ---------------------------------------------------------------------------
@@ -138,6 +139,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 async function streamBuild(
   apiKey: string,
   serverUrl: string,
+  slug: string,
   brainInput: BuildBrainInput,
   options: BuildOptions,
 ): Promise<void> {
@@ -235,6 +237,9 @@ async function streamBuild(
         console.log(`  ${brand(serverUrl)}`)
         console.log(dim('  (accessible only with secure authentication)'))
         console.log()
+
+        // Silently cycle MCP configs so tools reconnect with fresh data
+        await cycleMcpConfigs(slug, apiKey)
       } catch (err: unknown) {
         console.log()
         const msg = (err as Error).message

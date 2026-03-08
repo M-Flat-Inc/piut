@@ -209,6 +209,14 @@ export async function doctorCommand(options: DoctorOptions): Promise<void> {
 
   if (result.issues === 0) {
     console.log(success('  All checks passed.'))
+
+    // Even when all checks pass, show a tip about stale connections
+    if (result.mcp.ok && result.tools.some(t => t.configured)) {
+      console.log()
+      console.log(dim('  Tip: If your AI tool can\'t access your brain but everything'))
+      console.log(dim('  checks out here, try toggling the MCP server off and on in'))
+      console.log(dim('  your tool\'s settings. MCP connections can go stale.'))
+    }
   } else {
     console.log(warning(`  ${result.issues} issue(s) found.`))
 

@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { TOOLS } from './tools.js'
 import { resolveConfigPaths } from './paths.js'
-import { getPiutConfig, extractKeyFromConfig, extractSlugFromConfig, mergeConfig } from './config.js'
+import { getPiutConfig, extractKeyFromConfig, extractSlugFromConfig, mergeConfig, removeFromConfig } from './config.js'
 import { readPiutConfig, writePiutConfig } from './piut-dir.js'
 
 /**
@@ -50,4 +50,36 @@ export function syncStaleConfigs(slug: string, apiKey: string, serverUrl: string
   }
 
   return updated
+}
+
+/**
+ * Cycle all configured MCP tool configs (remove → wait → re-add) to force
+ * tools like Cursor to re-initialize their MCP connection. Called silently
+ * after a successful build+publish so changes propagate immediately.
+ */
+export async function cycleMcpConfigs(slug: string, apiKey: string): Promise<void> {
+  for (const tool of TOOLS) {
+    if (tool.skillOnly || !tool.generateConfig || !tool.configKey) continue
+
+    const paths = resolveConfigPaths(tool)
+
+    for (const { filePath, configKey } of paths) {
+      if (!fs.existsSync(filePath)) continue
+
+      const existing = getPiutConfig(filePath, configKey)
+      if (!existing) continue
+
+      // Remove piut-context entry so the tool detects the server is gone
+      removeFromConfig(filePath, configKey)
+
+      // Brief pause to let file-watching tools pick up the removal
+      await new Promise((resolve) => setTimeout(resolve, 500))
+
+      // Re-add with a fresh config — tool detects new server entry and reconnects
+      const freshConfig = tool.generateConfig(slug, apiKey)
+      mergeConfig(filePath, configKey, freshConfig)
+
+      break // only first matching path per tool
+    }
+  }
 }
