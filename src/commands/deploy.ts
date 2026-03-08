@@ -2,6 +2,7 @@ import chalk from 'chalk'
 import { publishServer } from '../lib/api.js'
 import { banner, brand, success, dim, warning } from '../lib/ui.js'
 import { resolveApiKeyWithResult } from '../lib/auth.js'
+import { cycleMcpConfigs } from '../lib/sync.js'
 import { CliError } from '../types.js'
 
 interface DeployOptions {
@@ -28,6 +29,10 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     console.log(`  ${brand(serverUrl)}`)
     console.log(dim('  (securely accessible only with authentication)'))
     console.log()
+
+    // Silently cycle MCP configs so tools reconnect with fresh data
+    await cycleMcpConfigs(slug, apiKey)
+
     console.log(dim('  Next: run ') + brand('piut connect') + dim(' to add brain references to your projects.'))
     console.log()
   } catch (err: unknown) {

@@ -10,12 +10,13 @@ import { loginCommand } from './commands/login.js'
 import { logoutCommand } from './commands/logout.js'
 import { updateCommand } from './commands/update.js'
 import { doctorCommand } from './commands/doctor.js'
+import { refreshCommand } from './commands/refresh.js'
 import { vaultListCommand, vaultUploadCommand, vaultReadCommand, vaultDeleteCommand } from './commands/vault.js'
 import { interactiveMenu } from './commands/interactive.js'
 import { checkForUpdate } from './lib/update-check.js'
 import { CliError } from './types.js'
 
-const VERSION = '3.9.0'
+const VERSION = '3.10.0'
 
 /**
  * Wrap a command action so that CliError (thrown instead of process.exit(1)
@@ -112,6 +113,12 @@ program
   .option('--fix', 'Auto-fix stale configurations')
   .option('--json', 'Output results as JSON')
   .action(withExit(doctorCommand))
+
+program
+  .command('refresh')
+  .description('Force all configured tools to reconnect to your MCP server')
+  .option('-k, --key <key>', 'API key')
+  .action(withExit(refreshCommand))
 
 const vault = program
   .command('vault')

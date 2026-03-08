@@ -46,7 +46,7 @@ export interface DetectedTool {
   resolvedConfigKey: string
   exists: boolean
   alreadyConfigured: boolean
-  /** True if piut-context exists but has a different API key than the one being used */
+  /** True if piut exists but has a different API key than the one being used */
   staleKey?: boolean
 }
 

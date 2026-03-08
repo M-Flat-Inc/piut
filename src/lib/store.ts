@@ -4,6 +4,7 @@ import os from 'os'
 
 export interface PiutConfig {
   apiKey?: string
+  globalInstallOffered?: boolean
 }
 
 const CONFIG_DIR = path.join(os.homedir(), '.piut')

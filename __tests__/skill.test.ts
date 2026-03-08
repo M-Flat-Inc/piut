@@ -74,7 +74,7 @@ describe('SKILL_SNIPPET', () => {
   it('mentions MCP explicitly so AI tools understand the protocol', () => {
     expect(SKILL_SNIPPET).toContain('MCP')
     expect(SKILL_SNIPPET).toContain('Model Context Protocol')
-    expect(SKILL_SNIPPET).toContain('piut-context')
+    expect(SKILL_SNIPPET).toContain('MCP Server: piut')
   })
 
   it('lists all 6 MCP tool names', () => {
@@ -105,7 +105,7 @@ describe('PROJECT_SKILL_SNIPPET', () => {
 
   it('mentions MCP explicitly', () => {
     expect(PROJECT_SKILL_SNIPPET).toContain('MCP')
-    expect(PROJECT_SKILL_SNIPPET).toContain('piut-context')
+    expect(PROJECT_SKILL_SNIPPET).toContain('MCP Server: piut')
   })
 
   it('lists all 6 MCP tool names', () => {

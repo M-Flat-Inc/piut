@@ -18,7 +18,9 @@ import { resolveConfigPaths } from '../lib/paths.js'
 import { isPiutConfigured, mergeConfig, removeFromConfig } from '../lib/config.js'
 import { scanForProjects } from '../lib/brain-scanner.js'
 import { writePiutConfig, writePiutSkill, ensureGitignored, hasPiutDir, removePiutDir } from '../lib/piut-dir.js'
-import { syncStaleConfigs } from '../lib/sync.js'
+import { syncStaleConfigs, cycleMcpConfigs, cycleProjectConfigs, getConfiguredToolNames } from '../lib/sync.js'
+import { publishServer } from '../lib/api.js'
+import { offerGlobalInstall } from '../lib/global-install.js'
 import { PROJECT_SKILL_SNIPPET } from '../lib/skill.js'
 import { CliError } from '../types.js'
 import type { ValidateResponse, ProjectInfo } from '../types.js'
@@ -89,6 +91,45 @@ export async function interactiveMenu(): Promise<void> {
   )
   if (synced.length > 0) {
     console.log(dim(`  Updated ${synced.length} stale config(s): ${synced.join(', ')}`))
+  }
+
+  // Offer global `piut` command if not already installed
+  await offerGlobalInstall()
+
+  // Silent auto-refresh: republish server, cycle tools + projects
+  const configuredTools = getConfiguredToolNames()
+  const isDeployed = currentValidation.status === 'active'
+
+  if (configuredTools.length > 0 || isDeployed) {
+    const parts: string[] = []
+
+    // Republish server if deployed
+    if (isDeployed) {
+      try {
+        await publishServer(apiKey)
+        parts.push('server')
+      } catch { /* silent */ }
+    }
+
+    // Cycle tool configs
+    if (configuredTools.length > 0) {
+      await cycleMcpConfigs(currentValidation.slug, apiKey)
+      parts.push(`${configuredTools.length} tool(s)`)
+    }
+
+    // Refresh connected projects
+    const refreshedProjects = await cycleProjectConfigs(
+      currentValidation.slug,
+      apiKey,
+      currentValidation.serverUrl,
+    )
+    if (refreshedProjects.length > 0) {
+      parts.push(`${refreshedProjects.length} project(s)`)
+    }
+
+    if (parts.length > 0) {
+      console.log(dim(`  Refreshed: ${parts.join(', ')}`))
+    }
   }
 
   console.log()

@@ -146,7 +146,7 @@ Standard config for most tools:
 ```json
 {
   "mcpServers": {
-    "piut-context": {
+    "piut": {
       "type": "http",
       "url": "https://piut.com/api/mcp/YOUR_SLUG",
       "headers": {

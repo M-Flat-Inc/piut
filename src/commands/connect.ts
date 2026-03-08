@@ -81,7 +81,7 @@ export const RULE_FILES: RuleFileConfig[] = [
   },
 ]
 
-export const DEDICATED_FILE_CONTENT = `## p\u0131ut Context (MCP Server: piut-context)
+export const DEDICATED_FILE_CONTENT = `## p\u0131ut Context (MCP Server: piut)
 
 This project uses p\u0131ut for persistent personal context via MCP (Model Context Protocol).
 p\u0131ut provides MCP tools \u2014 do NOT read local .piut/ files directly. Use the MCP tools.
@@ -103,7 +103,7 @@ p\u0131ut provides MCP tools \u2014 do NOT read local .piut/ files directly. Use
 Full skill reference: .piut/skill.md
 `
 
-export const APPEND_SECTION = `\n\n## p\u0131ut Context (MCP Server: piut-context)
+export const APPEND_SECTION = `\n\n## p\u0131ut Context (MCP Server: piut)
 
 p\u0131ut provides MCP tools for persistent personal context. Do NOT read local .piut/ files.
 Available tools: \`get_context\`, \`get_section\`, \`search_brain\`, \`append_brain\`, \`update_brain\`, \`prompt_brain\`

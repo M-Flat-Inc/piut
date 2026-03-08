@@ -1,6 +1,11 @@
 import fs from 'fs'
 import path from 'path'
 
+/** The MCP server entry name used in tool config files. */
+export const SERVER_KEY = 'piut'
+/** Legacy key from CLI versions before 4.0. Checked during reads for migration. */
+export const LEGACY_SERVER_KEY = 'piut-context'
+
 /** Read a JSON config file. Returns null if file doesn't exist or can't be parsed. */
 export function readConfig(filePath: string): Record<string, unknown> | null {
   let raw: string
@@ -57,16 +62,17 @@ function setAtKeyPath(config: Record<string, unknown>, keyPath: string, value: u
   current[parts[parts.length - 1]] = value
 }
 
-/** Check if piut-context is already configured in a config file.
+/** Check if piut is already configured in a config file (checks both new and legacy keys).
  *  configKey supports dot-separated paths (e.g., "mcp.servers"). */
 export function isPiutConfigured(filePath: string, configKey: string): boolean {
   const config = readConfig(filePath)
   if (!config) return false
   const servers = resolveKeyPath(config, configKey)
-  return !!servers?.['piut-context']
+  return !!(servers?.[SERVER_KEY] || servers?.[LEGACY_SERVER_KEY])
 }
 
-/** Merge piut-context into an existing config, preserving all other content.
+/** Merge piut server entry into an existing config, preserving all other content.
+ *  Writes under the new key and removes the legacy key if present.
  *  configKey supports dot-separated paths (e.g., "mcp.servers"). */
 export function mergeConfig(
   filePath: string,
@@ -76,25 +82,27 @@ export function mergeConfig(
   const existing = readConfig(filePath) || {}
   const servers = (resolveKeyPath(existing, configKey) || {}) as Record<string, unknown>
 
-  servers['piut-context'] = serverConfig
+  // Remove legacy key if present
+  delete servers[LEGACY_SERVER_KEY]
+  servers[SERVER_KEY] = serverConfig
   setAtKeyPath(existing, configKey, servers)
 
   writeConfig(filePath, existing)
 }
 
-/** Extract the piut-context server config object from a tool's config file.
- *  configKey supports dot-separated paths (e.g., "mcp.servers"). */
+/** Extract the piut server config object from a tool's config file.
+ *  Checks both new and legacy keys. configKey supports dot-separated paths. */
 export function getPiutConfig(filePath: string, configKey: string): Record<string, unknown> | null {
   const config = readConfig(filePath)
   if (!config) return null
   const servers = resolveKeyPath(config, configKey)
-  const piut = servers?.['piut-context'] as Record<string, unknown> | undefined
+  const piut = (servers?.[SERVER_KEY] || servers?.[LEGACY_SERVER_KEY]) as Record<string, unknown> | undefined
   return piut ?? null
 }
 
 /**
- * Extract the API key from a piut-context config object.
- * Handles all 7 tool formats:
+ * Extract the API key from a piut config object.
+ * Handles all tool formats:
  * - Most tools: headers.Authorization = "Bearer pb_..."
  * - Claude Desktop: args array containing "Authorization: Bearer pb_..."
  * - Zed: settings.headers.Authorization = "Bearer pb_..."
@@ -130,7 +138,7 @@ export function extractKeyFromConfig(piutConfig: Record<string, unknown>): strin
 }
 
 /**
- * Extract the MCP slug from a piut-context config object's URL.
+ * Extract the MCP slug from a piut config object's URL.
  * Handles all tool formats (url, serverUrl, httpUrl, settings.url, args array).
  */
 export function extractSlugFromConfig(piutConfig: Record<string, unknown>): string | null {
@@ -163,19 +171,22 @@ export function extractSlugFromConfig(piutConfig: Record<string, unknown>): stri
   return null
 }
 
-/** Remove piut-context from a config file. Returns true if found and removed.
- *  configKey supports dot-separated paths (e.g., "mcp.servers"). */
+/** Remove piut from a config file. Removes both new and legacy keys.
+ *  Returns true if found and removed. configKey supports dot-separated paths. */
 export function removeFromConfig(filePath: string, configKey: string): boolean {
   const config = readConfig(filePath)
   if (!config) return false
 
   const servers = resolveKeyPath(config, configKey)
-  if (!servers?.['piut-context']) return false
+  const hasNew = !!servers?.[SERVER_KEY]
+  const hasLegacy = !!servers?.[LEGACY_SERVER_KEY]
+  if (!hasNew && !hasLegacy) return false
 
-  delete servers['piut-context']
+  delete servers![SERVER_KEY]
+  delete servers![LEGACY_SERVER_KEY]
 
   // Clean up empty parent objects for simple (non-nested) keys
-  if (Object.keys(servers).length === 0 && !configKey.includes('.')) {
+  if (Object.keys(servers!).length === 0 && !configKey.includes('.')) {
     delete config[configKey]
   }
 

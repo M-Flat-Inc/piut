@@ -9,6 +9,7 @@ import { resolveConfigPaths, expandPath } from '../lib/paths.js'
 import { mergeConfig, isPiutConfigured, getPiutConfig, extractKeyFromConfig, extractSlugFromConfig } from '../lib/config.js'
 import { placeSkillFile } from '../lib/skill.js'
 import { writePiutConfig, writePiutSkill, ensureGitignored } from '../lib/piut-dir.js'
+import { offerGlobalInstall } from '../lib/global-install.js'
 import { banner, brand, success, warning, dim, toolLine } from '../lib/ui.js'
 import { CliError } from '../types.js'
 import type { DetectedTool } from '../types.js'
@@ -304,6 +305,10 @@ export async function setupCommand(options: SetupOptions): Promise<void> {
   if (skipped.length > 0) {
     console.log(dim(`  Skipped: ${skipped.join(', ')}`))
   }
+
+  // 10. Install global `piut` command if not already available
+  await offerGlobalInstall()
+
   console.log()
   console.log(dim('  Restart your AI tools for changes to take effect.'))
   console.log(dim('  Verify: ask any AI "What do you know about me from my context?"'))

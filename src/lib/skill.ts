@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 
-export const SKILL_SNIPPET = `## p\u0131ut Context (MCP Server: piut-context)
+export const SKILL_SNIPPET = `## p\u0131ut Context (MCP Server: piut)
 
 This project uses p\u0131ut for persistent personal context via MCP (Model Context Protocol).
 p\u0131ut provides MCP tools \u2014 do NOT read local .piut/ files directly. Use the MCP tools.
@@ -23,7 +23,7 @@ p\u0131ut provides MCP tools \u2014 do NOT read local .piut/ files directly. Use
 Skill reference: https://raw.githubusercontent.com/M-Flat-Inc/piut/main/skill.md`
 
 /** Skill snippet for connect command — references local .piut/skill.md instead of GitHub URL */
-export const PROJECT_SKILL_SNIPPET = `## p\u0131ut Context (MCP Server: piut-context)
+export const PROJECT_SKILL_SNIPPET = `## p\u0131ut Context (MCP Server: piut)
 
 This project uses p\u0131ut for persistent personal context via MCP (Model Context Protocol).
 p\u0131ut provides MCP tools \u2014 do NOT read local .piut/ files directly. Use the MCP tools.

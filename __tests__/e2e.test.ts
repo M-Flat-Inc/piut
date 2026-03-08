@@ -339,9 +339,9 @@ describe('setup command', () => {
     expect(fs.existsSync(configPath)).toBe(true)
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-    expect(config.mcpServers['piut-context']).toBeDefined()
-    expect(config.mcpServers['piut-context'].url).toBe('https://piut.com/api/mcp/testuser')
-    expect(config.mcpServers['piut-context'].headers.Authorization).toBe(
+    expect(config.mcpServers['piut']).toBeDefined()
+    expect(config.mcpServers['piut'].url).toBe('https://piut.com/api/mcp/testuser')
+    expect(config.mcpServers['piut'].headers.Authorization).toBe(
       'Bearer pb_valid_test_key'
     )
   })
@@ -361,8 +361,8 @@ describe('setup command', () => {
     const config = JSON.parse(
       fs.readFileSync(path.join(windsurfDir, 'mcp_config.json'), 'utf-8')
     )
-    expect(config.mcpServers['piut-context'].serverUrl).toContain('piut.com/api/mcp/testuser')
-    expect(config.mcpServers['piut-context'].url).toBeUndefined()
+    expect(config.mcpServers['piut'].serverUrl).toContain('piut.com/api/mcp/testuser')
+    expect(config.mcpServers['piut'].url).toBeUndefined()
   })
 
   it('preserves existing config entries', async () => {
@@ -382,7 +382,7 @@ describe('setup command', () => {
       fs.readFileSync(path.join(tmpHome, '.cursor', 'mcp.json'), 'utf-8')
     )
     expect(config.mcpServers['other-server']).toEqual({ url: 'http://other.com' })
-    expect(config.mcpServers['piut-context']).toBeDefined()
+    expect(config.mcpServers['piut']).toBeDefined()
   })
 
   it('skips already-configured tools in --yes mode', async () => {
@@ -421,7 +421,7 @@ describe('setup command', () => {
     const config = JSON.parse(
       fs.readFileSync(path.join(tmpHome, '.cursor', 'mcp.json'), 'utf-8')
     )
-    expect(config.mcpServers['piut-context'].url).toContain('/api/mcp/testuser')
+    expect(config.mcpServers['piut'].url).toContain('/api/mcp/testuser')
   })
 
   it('creates skill files when not using --skip-skill', async () => {
@@ -458,8 +458,8 @@ describe('setup command', () => {
 
     const configPath = path.join(claudeDesktopDir, 'claude_desktop_config.json')
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'))
-    expect(config.mcpServers['piut-context'].command).toBe('npx')
-    expect(config.mcpServers['piut-context'].args).toContain('mcp-remote')
+    expect(config.mcpServers['piut'].command).toBe('npx')
+    expect(config.mcpServers['piut'].args).toContain('mcp-remote')
   })
 
   it('configures Amazon Q with standard config', async () => {
@@ -474,8 +474,8 @@ describe('setup command', () => {
     expect(stdout).toContain('Amazon Q')
 
     const config = JSON.parse(fs.readFileSync(path.join(aqDir, 'mcp.json'), 'utf-8'))
-    expect(config.mcpServers['piut-context'].type).toBe('http')
-    expect(config.mcpServers['piut-context'].url).toContain('piut.com/api/mcp/testuser')
+    expect(config.mcpServers['piut'].type).toBe('http')
+    expect(config.mcpServers['piut'].url).toContain('piut.com/api/mcp/testuser')
   })
 
   it('configures Zed with context_servers key', async () => {
@@ -498,8 +498,8 @@ describe('setup command', () => {
     )
     expect(config.theme).toBe('One Dark')
     expect(config.vim_mode).toBe(true)
-    expect(config.context_servers['piut-context']).toBeDefined()
-    expect(config.context_servers['piut-context'].settings.url).toContain(
+    expect(config.context_servers['piut']).toBeDefined()
+    expect(config.context_servers['piut'].settings.url).toContain(
       'piut.com/api/mcp/testuser'
     )
   })
@@ -765,8 +765,8 @@ describe('connect command', () => {
     const vscodeMcp = path.join(projectDir, '.vscode', 'mcp.json')
     expect(fs.existsSync(vscodeMcp)).toBe(true)
     const config = JSON.parse(fs.readFileSync(vscodeMcp, 'utf-8'))
-    expect(config.servers['piut-context']).toBeDefined()
-    expect(config.servers['piut-context'].url).toContain('testuser')
+    expect(config.servers['piut']).toBeDefined()
+    expect(config.servers['piut'].url).toContain('testuser')
   })
 })
 
@@ -862,7 +862,7 @@ describe('disconnect command', () => {
     expect(fs.existsSync(path.join(projectDir, '.piut'))).toBe(false)
   })
 
-  it('removes VS Code piut-context from .vscode/mcp.json on disconnect', async () => {
+  it('removes VS Code piut config from .vscode/mcp.json on disconnect', async () => {
     const projectDir = path.join(tmpHome, 'Projects', 'vscode-disconnect')
     fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
     fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ name: 'vscode-disconnect' }))
@@ -884,7 +884,7 @@ describe('disconnect command', () => {
       { env: {} }
     )
     expect(exitCode).toBe(0)
-    expect(stdout).toContain('piut-context removed')
+    expect(stdout).toContain('piut removed')
 
     // other-server should still be there
     const config = JSON.parse(fs.readFileSync(path.join(projectDir, '.vscode', 'mcp.json'), 'utf-8'))

@@ -215,7 +215,7 @@ export async function disconnectCommand(options: DisconnectOptions): Promise<voi
       } else if (action.action === 'remove-mcp') {
         try {
           removeFromConfig(action.absPath, 'servers')
-          console.log(success(`  ✓ ${projectName}/${action.filePath}`) + dim(' — piut-context removed'))
+          console.log(success(`  ✓ ${projectName}/${action.filePath}`) + dim(' — piut removed'))
           disconnected++
         } catch {
           console.log(warning(`  ✗ ${projectName}/${action.filePath}`) + dim(' — could not update'))

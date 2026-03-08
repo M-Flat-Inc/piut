@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { syncStaleConfigs } from '../src/lib/sync.js'
+import { syncStaleConfigs, getConfiguredToolNames, cycleProjectConfigs } from '../src/lib/sync.js'
 import { writeConfig, readConfig, getPiutConfig, extractKeyFromConfig, extractSlugFromConfig } from '../src/lib/config.js'
 
 let tmpDir: string
@@ -136,7 +136,9 @@ describe('syncStaleConfigs', () => {
     const config = readConfig(configPath)
     const servers = config?.mcpServers as Record<string, unknown>
     expect(servers['other-server']).toEqual({ type: 'http', url: 'https://other.com/mcp' })
-    expect(servers['piut-context']).toBeDefined()
+    // Legacy key should be migrated to new key
+    expect(servers['piut']).toBeDefined()
+    expect(servers['piut-context']).toBeUndefined()
   })
 
   it('updates .piut/config.json in current directory when stale', () => {
@@ -170,8 +172,8 @@ describe('syncStaleConfigs', () => {
     expect(result).toEqual([])
   })
 
-  it('skips tools without piut-context configured', () => {
-    // Create a config file without piut-context
+  it('skips tools without piut configured', () => {
+    // Create a config file without piut
     const configPath = path.resolve(tmpDir, '.mcp.json')
     writeConfig(configPath, {
       mcpServers: {
@@ -230,5 +232,115 @@ describe('syncStaleConfigs', () => {
     const result = syncStaleConfigs('newslug', 'pb_newkey', 'https://piut.com/api/mcp/newslug')
     expect(result.length).toBeGreaterThanOrEqual(2)
     expect(result).toContain('.piut/config.json')
+  })
+})
+
+describe('getConfiguredToolNames', () => {
+  it('returns empty array when no tools configured', () => {
+    const result = getConfiguredToolNames()
+    expect(result).toEqual([])
+  })
+
+  it('returns tool names when configured', () => {
+    writeToolConfig('.mcp.json', 'mcpServers', 'myslug', 'pb_key')
+    const result = getConfiguredToolNames()
+    expect(result).toContain('Claude Code')
+  })
+
+  it('returns multiple tools when configured', () => {
+    writeToolConfig('.mcp.json', 'mcpServers', 'myslug', 'pb_key')
+    const cursorDir = path.join(tmpDir, '.cursor')
+    fs.mkdirSync(cursorDir, { recursive: true })
+    writeConfig(path.join(cursorDir, 'mcp.json'), {
+      mcpServers: {
+        piut: {
+          url: 'https://piut.com/api/mcp/myslug',
+          headers: { Authorization: 'Bearer pb_key' },
+        },
+      },
+    })
+    const result = getConfiguredToolNames()
+    expect(result).toContain('Claude Code')
+    expect(result).toContain('Cursor')
+  })
+})
+
+// Mock scanForProjects and writePiutSkill for cycleProjectConfigs tests
+vi.mock('../src/lib/brain-scanner.js', async (importOriginal) => {
+  const original = await importOriginal() as Record<string, unknown>
+  return {
+    ...original,
+    scanForProjects: vi.fn(() => []),
+  }
+})
+
+vi.mock('../src/lib/piut-dir.js', async (importOriginal) => {
+  const original = await importOriginal() as Record<string, unknown>
+  return {
+    ...original,
+    writePiutSkill: vi.fn(async () => {}),
+  }
+})
+
+describe('cycleProjectConfigs', () => {
+  it('returns empty array when no connected projects', async () => {
+    const { scanForProjects } = await import('../src/lib/brain-scanner.js')
+    vi.mocked(scanForProjects).mockReturnValue([])
+
+    const result = await cycleProjectConfigs('myslug', 'pb_key', 'https://piut.com/api/mcp/myslug')
+    expect(result).toEqual([])
+  })
+
+  it('refreshes projects that have .piut/config.json', async () => {
+    // Create a fake project with .piut dir
+    const projectDir = path.join(tmpDir, 'my-project')
+    fs.mkdirSync(path.join(projectDir, '.piut'), { recursive: true })
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.writeFileSync(
+      path.join(projectDir, '.piut', 'config.json'),
+      JSON.stringify({ slug: 'oldslug', apiKey: 'pb_old', serverUrl: 'https://piut.com/api/mcp/oldslug' }),
+    )
+
+    const { scanForProjects } = await import('../src/lib/brain-scanner.js')
+    vi.mocked(scanForProjects).mockReturnValue([{
+      name: 'my-project',
+      path: projectDir,
+      description: '',
+      hasClaudeMd: false,
+      hasCursorRules: false,
+      hasWindsurfRules: false,
+      hasCopilotInstructions: false,
+      hasConventionsMd: false,
+      hasZedRules: false,
+    }])
+
+    const result = await cycleProjectConfigs('newslug', 'pb_new', 'https://piut.com/api/mcp/newslug')
+    expect(result).toContain('my-project')
+
+    // Verify config.json was updated
+    const updated = JSON.parse(fs.readFileSync(path.join(projectDir, '.piut', 'config.json'), 'utf-8'))
+    expect(updated.slug).toBe('newslug')
+    expect(updated.apiKey).toBe('pb_new')
+  })
+
+  it('skips projects without .piut dir', async () => {
+    const projectDir = path.join(tmpDir, 'no-piut-project')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+
+    const { scanForProjects } = await import('../src/lib/brain-scanner.js')
+    vi.mocked(scanForProjects).mockReturnValue([{
+      name: 'no-piut-project',
+      path: projectDir,
+      description: '',
+      hasClaudeMd: false,
+      hasCursorRules: false,
+      hasWindsurfRules: false,
+      hasCopilotInstructions: false,
+      hasConventionsMd: false,
+      hasZedRules: false,
+    }])
+
+    const result = await cycleProjectConfigs('myslug', 'pb_key', 'https://piut.com/api/mcp/myslug')
+    expect(result).toEqual([])
   })
 })

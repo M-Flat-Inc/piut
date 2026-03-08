@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { readConfig, writeConfig, mergeConfig, removeFromConfig, isPiutConfigured, getPiutConfig, extractKeyFromConfig } from '../src/lib/config.js'
+import { readConfig, writeConfig, mergeConfig, removeFromConfig, isPiutConfigured, getPiutConfig, extractKeyFromConfig, SERVER_KEY, LEGACY_SERVER_KEY } from '../src/lib/config.js'
 
 let tmpDir: string
 
@@ -17,6 +17,16 @@ afterEach(() => {
 function tmpFile(name: string): string {
   return path.join(tmpDir, name)
 }
+
+describe('SERVER_KEY constants', () => {
+  it('uses piut as the new key', () => {
+    expect(SERVER_KEY).toBe('piut')
+  })
+
+  it('uses piut-context as the legacy key', () => {
+    expect(LEGACY_SERVER_KEY).toBe('piut-context')
+  })
+})
 
 describe('readConfig', () => {
   it('returns null for missing files', () => {
@@ -70,32 +80,38 @@ describe('isPiutConfigured', () => {
     expect(isPiutConfigured(tmpFile('missing.json'), 'mcpServers')).toBe(false)
   })
 
-  it('returns false when piut-context is not present', () => {
+  it('returns false when piut is not present', () => {
     const file = tmpFile('nopiut.json')
     writeConfig(file, { mcpServers: { other: { url: 'http://example.com' } } })
     expect(isPiutConfigured(file, 'mcpServers')).toBe(false)
   })
 
-  it('returns true when piut-context is present', () => {
+  it('returns true when new piut key is present', () => {
     const file = tmpFile('haspiut.json')
+    writeConfig(file, { mcpServers: { piut: { url: 'http://example.com' } } })
+    expect(isPiutConfigured(file, 'mcpServers')).toBe(true)
+  })
+
+  it('returns true when legacy piut-context key is present', () => {
+    const file = tmpFile('haslegacy.json')
     writeConfig(file, { mcpServers: { 'piut-context': { url: 'http://example.com' } } })
     expect(isPiutConfigured(file, 'mcpServers')).toBe(true)
   })
 
   it('handles different config keys', () => {
     const file = tmpFile('servers.json')
-    writeConfig(file, { servers: { 'piut-context': { url: 'http://example.com' } } })
+    writeConfig(file, { servers: { piut: { url: 'http://example.com' } } })
     expect(isPiutConfigured(file, 'servers')).toBe(true)
     expect(isPiutConfigured(file, 'mcpServers')).toBe(false)
   })
 })
 
 describe('mergeConfig', () => {
-  it('creates a new config file if none exists', () => {
+  it('creates a new config file with piut key', () => {
     const file = tmpFile('new.json')
     mergeConfig(file, 'mcpServers', { url: 'http://piut.com' })
     const result = readConfig(file)
-    expect(result).toEqual({ mcpServers: { 'piut-context': { url: 'http://piut.com' } } })
+    expect(result).toEqual({ mcpServers: { piut: { url: 'http://piut.com' } } })
   })
 
   it('merges into existing config without overwriting other servers', () => {
@@ -111,13 +127,30 @@ describe('mergeConfig', () => {
     expect(result).toEqual({
       mcpServers: {
         other: { url: 'http://other.com' },
-        'piut-context': { url: 'http://piut.com' },
+        piut: { url: 'http://piut.com' },
       },
     })
   })
 
-  it('updates existing piut-context entry', () => {
+  it('updates existing piut entry', () => {
     const file = tmpFile('update.json')
+    writeConfig(file, {
+      mcpServers: {
+        piut: { url: 'http://old.com' },
+      },
+    })
+
+    mergeConfig(file, 'mcpServers', { url: 'http://new.com' })
+    const result = readConfig(file)
+    expect(result).toEqual({
+      mcpServers: {
+        piut: { url: 'http://new.com' },
+      },
+    })
+  })
+
+  it('migrates legacy piut-context to piut on merge', () => {
+    const file = tmpFile('migrate.json')
     writeConfig(file, {
       mcpServers: {
         'piut-context': { url: 'http://old.com' },
@@ -126,9 +159,10 @@ describe('mergeConfig', () => {
 
     mergeConfig(file, 'mcpServers', { url: 'http://new.com' })
     const result = readConfig(file)
+    // Legacy key removed, new key written
     expect(result).toEqual({
       mcpServers: {
-        'piut-context': { url: 'http://new.com' },
+        piut: { url: 'http://new.com' },
       },
     })
   })
@@ -151,30 +185,45 @@ describe('getPiutConfig', () => {
     expect(getPiutConfig(tmpFile('missing.json'), 'mcpServers')).toBeNull()
   })
 
-  it('returns null when piut-context is not present', () => {
+  it('returns null when piut is not present', () => {
     const file = tmpFile('nopiut.json')
     writeConfig(file, { mcpServers: { other: { url: 'http://example.com' } } })
     expect(getPiutConfig(file, 'mcpServers')).toBeNull()
   })
 
-  it('extracts piut-context config object', () => {
+  it('extracts piut config object (new key)', () => {
     const file = tmpFile('haspiut.json')
     const piutConfig = { type: 'http', url: 'https://piut.com/api/mcp/test', headers: { Authorization: 'Bearer pb_abc123' } }
-    writeConfig(file, { mcpServers: { 'piut-context': piutConfig, other: { url: 'http://other.com' } } })
+    writeConfig(file, { mcpServers: { piut: piutConfig, other: { url: 'http://other.com' } } })
     expect(getPiutConfig(file, 'mcpServers')).toEqual(piutConfig)
+  })
+
+  it('extracts piut config from legacy key', () => {
+    const file = tmpFile('legacy.json')
+    const piutConfig = { type: 'http', url: 'https://piut.com/api/mcp/test', headers: { Authorization: 'Bearer pb_abc123' } }
+    writeConfig(file, { mcpServers: { 'piut-context': piutConfig } })
+    expect(getPiutConfig(file, 'mcpServers')).toEqual(piutConfig)
+  })
+
+  it('prefers new key over legacy key', () => {
+    const file = tmpFile('both.json')
+    const newConfig = { url: 'https://piut.com/api/mcp/new' }
+    const legacyConfig = { url: 'https://piut.com/api/mcp/old' }
+    writeConfig(file, { mcpServers: { piut: newConfig, 'piut-context': legacyConfig } })
+    expect(getPiutConfig(file, 'mcpServers')).toEqual(newConfig)
   })
 
   it('works with servers key (VS Code)', () => {
     const file = tmpFile('vscode.json')
     const piutConfig = { type: 'http', url: 'https://piut.com/api/mcp/test' }
-    writeConfig(file, { servers: { 'piut-context': piutConfig } })
+    writeConfig(file, { servers: { piut: piutConfig } })
     expect(getPiutConfig(file, 'servers')).toEqual(piutConfig)
   })
 
   it('works with context_servers key (Zed)', () => {
     const file = tmpFile('zed.json')
     const piutConfig = { settings: { url: 'https://piut.com/api/mcp/test', headers: { Authorization: 'Bearer pb_xyz' } } }
-    writeConfig(file, { context_servers: { 'piut-context': piutConfig } })
+    writeConfig(file, { context_servers: { piut: piutConfig } })
     expect(getPiutConfig(file, 'context_servers')).toEqual(piutConfig)
   })
 })
@@ -221,7 +270,7 @@ describe('nested key paths (VS Code settings.json)', () => {
       'editor.fontSize': 14,
       mcp: {
         servers: {
-          'piut-context': { type: 'http', url: 'https://piut.com/api/mcp/test' },
+          piut: { type: 'http', url: 'https://piut.com/api/mcp/test' },
         },
       },
     })
@@ -229,16 +278,28 @@ describe('nested key paths (VS Code settings.json)', () => {
     expect(isPiutConfigured(file, 'servers')).toBe(false)
   })
 
+  it('isPiutConfigured detects legacy key in nested paths', () => {
+    const file = tmpFile('settings.json')
+    writeConfig(file, {
+      mcp: {
+        servers: {
+          'piut-context': { type: 'http', url: 'https://piut.com/api/mcp/test' },
+        },
+      },
+    })
+    expect(isPiutConfigured(file, 'mcp.servers')).toBe(true)
+  })
+
   it('getPiutConfig works with dot-separated key path', () => {
     const file = tmpFile('settings.json')
     const piutConfig = { type: 'http', url: 'https://piut.com/api/mcp/test' }
     writeConfig(file, {
-      mcp: { servers: { 'piut-context': piutConfig } },
+      mcp: { servers: { piut: piutConfig } },
     })
     expect(getPiutConfig(file, 'mcp.servers')).toEqual(piutConfig)
   })
 
-  it('mergeConfig creates nested structure from dot-separated key', () => {
+  it('mergeConfig creates nested structure with piut key', () => {
     const file = tmpFile('settings.json')
     writeConfig(file, { 'editor.fontSize': 14 })
     mergeConfig(file, 'mcp.servers', { type: 'http', url: 'https://piut.com/api/mcp/test' })
@@ -247,7 +308,7 @@ describe('nested key paths (VS Code settings.json)', () => {
       'editor.fontSize': 14,
       mcp: {
         servers: {
-          'piut-context': { type: 'http', url: 'https://piut.com/api/mcp/test' },
+          piut: { type: 'http', url: 'https://piut.com/api/mcp/test' },
         },
       },
     })
@@ -267,7 +328,7 @@ describe('nested key paths (VS Code settings.json)', () => {
     expect(result?.mcp).toEqual({
       servers: {
         'other-server': { type: 'http', url: 'https://other.com' },
-        'piut-context': { type: 'http', url: 'https://piut.com/api/mcp/test' },
+        piut: { type: 'http', url: 'https://piut.com/api/mcp/test' },
       },
     })
   })
@@ -278,14 +339,13 @@ describe('nested key paths (VS Code settings.json)', () => {
       'editor.fontSize': 14,
       mcp: {
         servers: {
-          'piut-context': { type: 'http', url: 'https://piut.com/api/mcp/test' },
+          piut: { type: 'http', url: 'https://piut.com/api/mcp/test' },
           'other-server': { type: 'http', url: 'https://other.com' },
         },
       },
     })
     expect(removeFromConfig(file, 'mcp.servers')).toBe(true)
     const result = readConfig(file)
-    // Other settings preserved, piut-context removed, other-server kept
     expect(result?.['editor.fontSize']).toBe(14)
     expect((result?.mcp as Record<string, unknown>)?.servers).toEqual({
       'other-server': { type: 'http', url: 'https://other.com' },
@@ -298,14 +358,32 @@ describe('removeFromConfig', () => {
     expect(removeFromConfig(tmpFile('missing.json'), 'mcpServers')).toBe(false)
   })
 
-  it('returns false when piut-context is not configured', () => {
+  it('returns false when piut is not configured', () => {
     const file = tmpFile('nopiut.json')
     writeConfig(file, { mcpServers: { other: { url: 'http://other.com' } } })
     expect(removeFromConfig(file, 'mcpServers')).toBe(false)
   })
 
-  it('removes piut-context and preserves other servers', () => {
+  it('removes piut and preserves other servers', () => {
     const file = tmpFile('remove.json')
+    writeConfig(file, {
+      mcpServers: {
+        other: { url: 'http://other.com' },
+        piut: { url: 'http://piut.com' },
+      },
+    })
+
+    expect(removeFromConfig(file, 'mcpServers')).toBe(true)
+    const result = readConfig(file)
+    expect(result).toEqual({
+      mcpServers: {
+        other: { url: 'http://other.com' },
+      },
+    })
+  })
+
+  it('removes legacy piut-context key', () => {
+    const file = tmpFile('remove-legacy.json')
     writeConfig(file, {
       mcpServers: {
         other: { url: 'http://other.com' },
@@ -322,11 +400,25 @@ describe('removeFromConfig', () => {
     })
   })
 
+  it('removes both keys if both present', () => {
+    const file = tmpFile('remove-both.json')
+    writeConfig(file, {
+      mcpServers: {
+        piut: { url: 'http://new.com' },
+        'piut-context': { url: 'http://old.com' },
+      },
+    })
+
+    expect(removeFromConfig(file, 'mcpServers')).toBe(true)
+    const result = readConfig(file)
+    expect(result).toEqual({})
+  })
+
   it('removes empty configKey after removing last server', () => {
     const file = tmpFile('lastserver.json')
     writeConfig(file, {
       mcpServers: {
-        'piut-context': { url: 'http://piut.com' },
+        piut: { url: 'http://piut.com' },
       },
     })
 
