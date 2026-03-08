@@ -6,7 +6,6 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import type { ParsedFile } from './file-parsers.js'
-import { formatSize } from './file-parsers.js'
 
 export interface FolderScanResult {
   path: string
@@ -18,9 +17,9 @@ export interface FolderScanResult {
 
 const home = os.homedir()
 
-/** Replace home dir prefix with ~ for display. */
+/** Display path (full path, no abbreviation). */
 export function displayPath(p: string): string {
-  return p.startsWith(home) ? '~' + p.slice(home.length) : p
+  return p
 }
 
 /** Group parsed files by their parent folder. */
@@ -49,18 +48,6 @@ export function groupFilesByFolder(files: ParsedFile[]): FolderScanResult[] {
   return results
 }
 
-/** Format a folder scan result as a display line for checkbox. */
-export function formatFolderChoice(folder: FolderScanResult): string {
-  return `${folder.displayPath} — ${folder.fileCount} file${folder.fileCount === 1 ? '' : 's'} (${formatSize(folder.totalBytes)})`
-}
-
-/** Format a summary line for selected folders. */
-export function formatSelectionSummary(folders: FolderScanResult[]): string {
-  const totalFiles = folders.reduce((sum, f) => sum + f.fileCount, 0)
-  const totalBytes = folders.reduce((sum, f) => sum + f.totalBytes, 0)
-  return `${folders.length} folder${folders.length === 1 ? '' : 's'} selected (${totalFiles} file${totalFiles === 1 ? '' : 's'}, ${formatSize(totalBytes)})`
-}
-
 // ---------------------------------------------------------------------------
 // Default scan directories
 // ---------------------------------------------------------------------------
@@ -73,8 +60,9 @@ const SKIP_HOME_DIRS = new Set([
 
 /** Dot-directories to include in home listing (AI tool configs) */
 const INCLUDE_DOT_DIRS = new Set([
-  '.claude', '.cursor', '.windsurf', '.openclaw', '.zed', '.github', '.amazonq',
+  '.cursor', '.windsurf', '.openclaw', '.zed', '.github', '.amazonq',
   '.gemini', '.mcporter', '.paperclip',
+  // .claude excluded — useful files collected by collectGlobalConfigFiles()
 ])
 
 /** Get default scan directories (home subdirs + cloud storage). */

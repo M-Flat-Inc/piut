@@ -5,8 +5,6 @@ import os from 'os'
 import {
   displayPath,
   groupFilesByFolder,
-  formatFolderChoice,
-  formatSelectionSummary,
 } from '../src/lib/folder-tree.js'
 import type { ParsedFile } from '../src/lib/file-parsers.js'
 
@@ -35,11 +33,9 @@ function makeParsedFile(opts: Partial<ParsedFile> & { path: string; folder: stri
 }
 
 describe('displayPath', () => {
-  it('replaces home dir with ~', () => {
-    // displayPath caches os.homedir() at module load time (before test's HOME override)
-    // Use origHome which is the real home dir that matches the cached value
+  it('returns full path without tilde abbreviation', () => {
     const result = displayPath(origHome + '/Documents/file.txt')
-    expect(result).toBe('~/Documents/file.txt')
+    expect(result).toBe(origHome + '/Documents/file.txt')
   })
 
   it('leaves non-home paths unchanged', () => {
@@ -88,56 +84,5 @@ describe('groupFilesByFolder', () => {
     const groups = groupFilesByFolder(files)
     expect(groups[0].path).toBe('/a')
     expect(groups[1].path).toBe('/z')
-  })
-})
-
-describe('formatFolderChoice', () => {
-  it('formats folder with file count and size', () => {
-    const folder = {
-      path: '/users/test/docs',
-      displayPath: '~/docs',
-      files: [],
-      fileCount: 5,
-      totalBytes: 2048,
-    }
-    const result = formatFolderChoice(folder)
-    expect(result).toContain('~/docs')
-    expect(result).toContain('5 files')
-    expect(result).toContain('2.0 KB')
-  })
-
-  it('uses singular for 1 file', () => {
-    const folder = {
-      path: '/users/test/docs',
-      displayPath: '~/docs',
-      files: [],
-      fileCount: 1,
-      totalBytes: 512,
-    }
-    const result = formatFolderChoice(folder)
-    expect(result).toContain('1 file')
-    expect(result).not.toContain('1 files')
-  })
-})
-
-describe('formatSelectionSummary', () => {
-  it('summarizes selected folders', () => {
-    const folders = [
-      { path: '/a', displayPath: '~/a', files: [], fileCount: 3, totalBytes: 1000 },
-      { path: '/b', displayPath: '~/b', files: [], fileCount: 7, totalBytes: 2000 },
-    ]
-    const result = formatSelectionSummary(folders)
-    expect(result).toContain('2 folders')
-    expect(result).toContain('10 files')
-    expect(result).toContain('2.9 KB')
-  })
-
-  it('uses singular for 1 folder', () => {
-    const folders = [
-      { path: '/a', displayPath: '~/a', files: [], fileCount: 1, totalBytes: 100 },
-    ]
-    const result = formatSelectionSummary(folders)
-    expect(result).toContain('1 folder')
-    expect(result).not.toContain('1 folders')
   })
 })

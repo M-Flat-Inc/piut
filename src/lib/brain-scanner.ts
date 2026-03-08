@@ -51,8 +51,9 @@ const SKIP_DIRS = new Set([
 ])
 
 const SCAN_DOT_DIRS = new Set([
-  '.claude', '.cursor', '.windsurf', '.github', '.zed', '.amazonq', '.vscode',
+  '.cursor', '.windsurf', '.github', '.zed', '.amazonq', '.vscode',
   '.gemini', '.openclaw', '.mcporter', '.paperclip',
+  // .claude intentionally excluded — useful files collected by collectGlobalConfigFiles()
 ])
 
 function shouldSkipDir(name: string): boolean {
@@ -119,7 +120,7 @@ function buildProjectInfo(projectPath: string): ProjectInfo {
 
 const MAX_PROJECT_DEPTH = 4
 
-function detectProjects(scanDirs: string[], onProgress?: ProgressCallback): ProjectInfo[] {
+export function detectProjects(scanDirs: string[], onProgress?: ProgressCallback): ProjectInfo[] {
   const projects: ProjectInfo[] = []
   const seen = new Set<string>()
 
@@ -138,7 +139,7 @@ function detectProjects(scanDirs: string[], onProgress?: ProgressCallback): Proj
         if (isProject(fullPath)) {
           const info = buildProjectInfo(fullPath)
           projects.push(info)
-          onProgress?.({ phase: 'projects', message: `${info.name} (${fullPath.replace(home, '~')})` })
+          onProgress?.({ phase: 'projects', message: `${info.name} (${displayPath(fullPath)})` })
         } else {
           walk(fullPath, depth + 1)
         }
@@ -160,10 +161,13 @@ function detectProjects(scanDirs: string[], onProgress?: ProgressCallback): Proj
 
 const MAX_CONFIG_SIZE = 100 * 1024
 
-function collectConfigFiles(projects: ProjectInfo[], onProgress?: ProgressCallback): { name: string; content: string }[] {
+/** 1MB cap on total brain input data. */
+export const MAX_BRAIN_INPUT_BYTES = 1_000_000
+
+/** Collect global AI config files (~/.claude/MEMORY.md, etc.). Always runs. */
+export function collectGlobalConfigFiles(onProgress?: ProgressCallback): { name: string; content: string }[] {
   const configs: { name: string; content: string }[] = []
 
-  // Global config files
   const globalPaths = [
     path.join(home, '.claude', 'MEMORY.md'),
     path.join(home, '.claude', 'CLAUDE.md'),
@@ -179,7 +183,7 @@ function collectConfigFiles(projects: ProjectInfo[], onProgress?: ProgressCallba
       if (!stat.isFile() || stat.size > MAX_CONFIG_SIZE) continue
       const content = fs.readFileSync(gp, 'utf-8')
       if (content.trim()) {
-        const name = `~/${path.relative(home, gp)}`
+        const name = path.relative(home, gp)
         configs.push({ name, content })
         onProgress?.({ phase: 'configs', message: name })
       }
@@ -188,7 +192,13 @@ function collectConfigFiles(projects: ProjectInfo[], onProgress?: ProgressCallba
     }
   }
 
-  // Per-project config files
+  return configs
+}
+
+/** Collect per-project AI config files (CLAUDE.md, .cursorrules, etc.). */
+export function collectProjectConfigFiles(projects: ProjectInfo[], onProgress?: ProgressCallback): { name: string; content: string }[] {
+  const configs: { name: string; content: string }[] = []
+
   for (const project of projects) {
     for (const fileName of AI_CONFIG_FILENAMES) {
       const filePath = path.join(project.path, fileName)
@@ -222,6 +232,14 @@ function collectConfigFiles(projects: ProjectInfo[], onProgress?: ProgressCallba
   return configs
 }
 
+/** Collect all config files (global + per-project). Convenience wrapper. */
+function collectConfigFiles(projects: ProjectInfo[], onProgress?: ProgressCallback): { name: string; content: string }[] {
+  return [
+    ...collectGlobalConfigFiles(onProgress),
+    ...collectProjectConfigFiles(projects, onProgress),
+  ]
+}
+
 // ---------------------------------------------------------------------------
 // Full filesystem scan for personal documents
 // ---------------------------------------------------------------------------
@@ -230,7 +248,7 @@ const MAX_SCAN_DEPTH = 6
 const MAX_FILES = 500
 
 /** Walk directories and collect all parseable files. */
-async function scanFilesInDirs(
+export async function scanFilesInDirs(
   dirs: string[],
   onProgress?: ProgressCallback,
 ): Promise<ParsedFile[]> {

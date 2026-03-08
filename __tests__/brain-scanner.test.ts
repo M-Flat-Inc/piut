@@ -2,7 +2,17 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { scanFolders, buildBrainInput, scanForProjects, getDefaultScanDirs } from '../src/lib/brain-scanner.js'
+import {
+  scanFolders,
+  buildBrainInput,
+  scanForProjects,
+  getDefaultScanDirs,
+  detectProjects,
+  collectGlobalConfigFiles,
+  collectProjectConfigFiles,
+  scanFilesInDirs,
+  MAX_BRAIN_INPUT_BYTES,
+} from '../src/lib/brain-scanner.js'
 
 let tmpHome: string
 let origHome: string
@@ -153,6 +163,26 @@ describe('scanFolders', () => {
     const claudeInConfigs = result.configFiles.find(c => c.name.includes('CLAUDE.md'))
     expect(claudeInConfigs).toBeDefined()
   })
+
+  it('skips .claude directory during scanning', async () => {
+    // Create .claude with junk data (tool-results, plugins)
+    const claudeToolResults = path.join(tmpHome, '.claude', 'projects', 'test-session', 'tool-results')
+    fs.mkdirSync(claudeToolResults, { recursive: true })
+    fs.writeFileSync(path.join(claudeToolResults, 'result.md'), '# Tool Result\nSome output')
+
+    const claudePlugins = path.join(tmpHome, '.claude', 'plugins', 'marketplaces', 'test-plugin')
+    fs.mkdirSync(claudePlugins, { recursive: true })
+    fs.writeFileSync(path.join(claudePlugins, 'config.json'), '{"name": "test"}')
+
+    // Also create a normal file outside .claude
+    const docsDir = path.join(tmpHome, 'docs')
+    fs.mkdirSync(docsDir, { recursive: true })
+    fs.writeFileSync(path.join(docsDir, 'notes.md'), '# Notes')
+
+    const result = await scanFolders([tmpHome])
+    const claudeFile = result.allFiles.find(f => f.path.includes('.claude'))
+    expect(claudeFile).toBeUndefined()
+  })
 })
 
 describe('buildBrainInput', () => {
@@ -185,6 +215,68 @@ describe('buildBrainInput', () => {
     const names = (input.summary.personalDocuments || []).map(d => d.name)
     expect(names.some(n => n.includes('file1'))).toBe(true)
     expect(names.some(n => n.includes('file2'))).toBe(false)
+  })
+})
+
+describe('detectProjects (exported)', () => {
+  it('can be called directly', () => {
+    const projectDir = path.join(tmpHome, 'my-project')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+
+    const projects = detectProjects([tmpHome])
+    expect(projects).toHaveLength(1)
+    expect(projects[0].name).toBe('my-project')
+  })
+})
+
+describe('collectGlobalConfigFiles', () => {
+  it('returns array without errors', () => {
+    // collectGlobalConfigFiles uses os.homedir() which is cached at module load time,
+    // not affected by process.env.HOME override. We verify it runs without errors.
+    const configs = collectGlobalConfigFiles()
+    expect(Array.isArray(configs)).toBe(true)
+  })
+
+  it('each config has name and content', () => {
+    const configs = collectGlobalConfigFiles()
+    for (const config of configs) {
+      expect(config).toHaveProperty('name')
+      expect(config).toHaveProperty('content')
+      expect(typeof config.name).toBe('string')
+      expect(typeof config.content).toBe('string')
+    }
+  })
+})
+
+describe('collectProjectConfigFiles', () => {
+  it('collects CLAUDE.md from projects', () => {
+    const projectDir = path.join(tmpHome, 'my-project')
+    fs.mkdirSync(path.join(projectDir, '.git'), { recursive: true })
+    fs.writeFileSync(path.join(projectDir, 'CLAUDE.md'), '# Project rules')
+
+    const projects = detectProjects([tmpHome])
+    const configs = collectProjectConfigFiles(projects)
+    const claudeConfig = configs.find(c => c.name.includes('CLAUDE.md'))
+    expect(claudeConfig).toBeDefined()
+    expect(claudeConfig!.content).toContain('Project rules')
+  })
+})
+
+describe('scanFilesInDirs (exported)', () => {
+  it('scans directories for parseable files', async () => {
+    const docsDir = path.join(tmpHome, 'docs')
+    fs.mkdirSync(docsDir, { recursive: true })
+    fs.writeFileSync(path.join(docsDir, 'notes.md'), '# Notes\nContent here')
+
+    const files = await scanFilesInDirs([docsDir])
+    expect(files).toHaveLength(1)
+    expect(files[0].content).toContain('Notes')
+  })
+})
+
+describe('MAX_BRAIN_INPUT_BYTES', () => {
+  it('is 1MB', () => {
+    expect(MAX_BRAIN_INPUT_BYTES).toBe(1_000_000)
   })
 })
 
