@@ -101,7 +101,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     console.log()
 
     const consent = await confirm({
-      message: 'Send files and build your brain?',
+      message: 'Proceed?',
       default: false,
     })
 
