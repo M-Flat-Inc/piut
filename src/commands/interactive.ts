@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { exec } from 'child_process'
 import chalk from 'chalk'
-import { validateKey, unpublishServer, pingMcp, getBrain, deleteConnections, registerProject, unregisterProject, getMachineId, listVaultFiles, uploadVaultFile, deleteVaultFile } from '../lib/api.js'
+import { validateKey, unpublishServer, pingMcp, getBrain, cleanBrain, deleteConnections, registerProject, unregisterProject, getMachineId, listVaultFiles, uploadVaultFile, deleteVaultFile } from '../lib/api.js'
 import { readStore, updateStore } from '../lib/store.js'
 import { promptLogin } from '../lib/auth.js'
 import { banner, brand, success, dim, warning, toolLine, Spinner } from '../lib/ui.js'
@@ -203,6 +203,12 @@ export async function interactiveMenu(): Promise<void> {
             description: 'Open piut.com to edit your brain',
             disabled: !hasBrain && '(build brain first)',
           },
+          {
+            name: 'Clean Brain',
+            value: 'clean-brain' as const,
+            description: 'Remove duplicates, fix formatting, flag contradictions',
+            disabled: !hasBrain && '(build brain first)',
+          },
           new Separator(),
           {
             name: isDeployed ? 'Undeploy Brain' : 'Deploy Brain',
@@ -271,6 +277,9 @@ export async function interactiveMenu(): Promise<void> {
           break
         case 'edit-brain':
           handleEditBrain()
+          break
+        case 'clean-brain':
+          await handleCleanBrain(apiKey)
           break
         case 'deploy':
           if (isDeployed) {
@@ -631,6 +640,59 @@ function handleEditBrain(): void {
   console.log()
 }
 
+
+// ---------------------------------------------------------------------------
+// Clean Brain — deduplicate, format, flag contradictions
+// ---------------------------------------------------------------------------
+
+async function handleCleanBrain(apiKey: string): Promise<void> {
+  const shouldContinue = await confirm({
+    message: 'This will clean up your brain by removing duplicates, fixing formatting, and flagging contradictions. You can revert this change from history. Continue?',
+    default: false,
+  })
+
+  if (!shouldContinue) {
+    console.log(dim('  Cancelled.'))
+    console.log()
+    return
+  }
+
+  const spinner = new Spinner('  Cleaning brain...')
+  spinner.start()
+
+  try {
+    const result = await cleanBrain(apiKey)
+    spinner.stop()
+
+    console.log(success(`  ✓ ${result.summary}`))
+    console.log()
+
+    // Show stats
+    const { stats } = result
+    const statParts: string[] = []
+    if (stats.duplicatesRemoved > 0) statParts.push(`${stats.duplicatesRemoved} duplicate${stats.duplicatesRemoved === 1 ? '' : 's'} removed`)
+    if (stats.sectionsReorganized > 0) statParts.push(`${stats.sectionsReorganized} section${stats.sectionsReorganized === 1 ? '' : 's'} reorganized`)
+    if (stats.contradictionsFound > 0) statParts.push(`${stats.contradictionsFound} contradiction${stats.contradictionsFound === 1 ? '' : 's'} found`)
+
+    if (statParts.length > 0) {
+      console.log(dim(`  ${statParts.join(' · ')}`))
+    }
+
+    // Show contradictions if any
+    if (result.contradictions.length > 0) {
+      console.log()
+      console.log(warning('  Contradictions detected:'))
+      for (const c of result.contradictions) {
+        console.log(dim(`  [${c.section}] ${c.description}`))
+      }
+    }
+
+    console.log()
+  } catch (err) {
+    spinner.stop()
+    throw err
+  }
+}
 
 // ---------------------------------------------------------------------------
 // File Vault — list, upload, delete from interactive menu

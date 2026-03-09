@@ -251,6 +251,35 @@ export async function getBrain(key: string): Promise<{
 }
 
 // ---------------------------------------------------------------------------
+// Brain clean
+// ---------------------------------------------------------------------------
+
+export interface CleanBrainResult {
+  summary: string
+  sections: { section: string; content: string }[]
+  contradictions: { section: string; description: string }[]
+  stats: { duplicatesRemoved: number; contradictionsFound: number; sectionsReorganized: number }
+}
+
+export async function cleanBrain(key: string): Promise<CleanBrainResult> {
+  const res = await fetch(`${API_BASE}/api/brain/clean`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  })
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(body.error || `Failed to clean brain (HTTP ${res.status})`)
+  }
+
+  return res.json()
+}
+
+// ---------------------------------------------------------------------------
 // Project registration
 // ---------------------------------------------------------------------------
 
