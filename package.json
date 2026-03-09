@@ -1,6 +1,6 @@
 {
   "name": "@piut/cli",
-  "version": "3.12.1",
+  "version": "3.12.2",
   "description": "Build your AI brain instantly. Deploy it as an MCP server. Connect it to every project.",
   "type": "module",
   "bin": {
