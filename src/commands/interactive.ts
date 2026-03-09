@@ -16,6 +16,7 @@ import { DEDICATED_FILES, APPEND_FILES, removePiutSection } from './disconnect.j
 import { TOOLS } from '../lib/tools.js'
 import { resolveConfigPaths } from '../lib/paths.js'
 import { isPiutConfigured, mergeConfig, removeFromConfig } from '../lib/config.js'
+import { connectAll } from '../lib/discovery.js'
 import { scanForProjects } from '../lib/brain-scanner.js'
 import { writePiutConfig, writePiutSkill, ensureGitignored, hasPiutDir, removePiutDir } from '../lib/piut-dir.js'
 import { syncStaleConfigs, cycleMcpConfigs, cycleProjectConfigs, getConfiguredToolNames } from '../lib/sync.js'
@@ -212,9 +213,9 @@ export async function interactiveMenu(): Promise<void> {
           },
           new Separator(),
           {
-            name: 'Connect Tools',
+            name: 'Connect All',
             value: 'connect-tools' as const,
-            description: 'Manage which AI tools use your MCP server',
+            description: 'Connect all detected AI tools to your MCP server',
             disabled: !isDeployed && '(deploy brain first)',
           },
           {
@@ -279,7 +280,7 @@ export async function interactiveMenu(): Promise<void> {
           }
           break
         case 'connect-tools':
-          await handleConnectTools(apiKey, currentValidation)
+          await connectAll(currentValidation.slug, apiKey, currentValidation)
           break
         case 'connect-projects':
           await handleManageProjects(apiKey, currentValidation)

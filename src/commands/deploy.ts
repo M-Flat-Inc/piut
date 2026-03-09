@@ -3,16 +3,18 @@ import { publishServer } from '../lib/api.js'
 import { banner, brand, success, dim, warning } from '../lib/ui.js'
 import { resolveApiKeyWithResult } from '../lib/auth.js'
 import { cycleMcpConfigs } from '../lib/sync.js'
+import { connectAll } from '../lib/discovery.js'
 import { CliError } from '../types.js'
 
 interface DeployOptions {
   key?: string
+  skipConnect?: boolean
 }
 
 export async function deployCommand(options: DeployOptions): Promise<void> {
   banner()
 
-  const { apiKey, slug, serverUrl, status } = await resolveApiKeyWithResult(options.key)
+  const { apiKey, slug, serverUrl, status, planType } = await resolveApiKeyWithResult(options.key)
 
   if (status === 'no_brain') {
     console.log()
@@ -33,8 +35,14 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     // Silently cycle MCP configs so tools reconnect with fresh data
     await cycleMcpConfigs(slug, apiKey)
 
-    console.log(dim('  Next: run ') + brand('piut connect') + dim(' to add brain references to your projects.'))
-    console.log()
+    // Auto-connect tools after deploy unless --skip-connect
+    if (!options.skipConnect) {
+      const validation = { slug, displayName: '', serverUrl, planType: planType || '', status: 'active' as const, _contractVersion: '' }
+      await connectAll(slug, apiKey, validation)
+    } else {
+      console.log(dim('  Next: run ') + brand('piut connect') + dim(' to add brain references to your projects.'))
+      console.log()
+    }
   } catch (err: unknown) {
     const msg = (err as Error).message
     if (msg === 'REQUIRES_SUBSCRIPTION') {

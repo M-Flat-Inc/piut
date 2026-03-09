@@ -606,7 +606,7 @@ describe('deploy command', () => {
 
   it('deploys brain', async () => {
     const { stdout, exitCode } = await runAsync(
-      ['deploy', '--key', 'pb_valid_test_key'],
+      ['deploy', '--key', 'pb_valid_test_key', '--skip-connect'],
       { env: apiEnv() }
     )
     expect(exitCode).toBe(0)

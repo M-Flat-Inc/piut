@@ -58,6 +58,7 @@ program
   .command('deploy')
   .description('Publish your MCP server (requires paid account)')
   .option('-k, --key <key>', 'API key')
+  .option('--skip-connect', 'Skip auto-connecting tools after deploy')
   .action(withExit(deployCommand))
 
 program
