@@ -272,8 +272,11 @@ export async function cleanBrain(key: string): Promise<CleanBrainResult> {
   })
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: 'Unknown error' }))
-    throw new Error(body.error || `Failed to clean brain (HTTP ${res.status})`)
+    if (res.status === 504) {
+      throw new Error('Clean brain timed out — your brain may be too large for a single operation. Try using prompt_brain to clean individual sections.')
+    }
+    const body = await res.json().catch(() => null)
+    throw new Error(body?.error || `Failed to clean brain (HTTP ${res.status})`)
   }
 
   return res.json()

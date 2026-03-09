@@ -326,7 +326,8 @@ export async function interactiveMenu(): Promise<void> {
         console.log()
       } else {
         // Unexpected error — log it, then return to menu
-        console.log(chalk.red(`  Error: ${(err as Error).message}`))
+        const errMsg = err instanceof Error ? err.message : String(err)
+        console.log(chalk.red(`  Error: ${errMsg || 'An unexpected error occurred'}`))
         console.log()
       }
     }
