@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { exec } from 'child_process'
 import chalk from 'chalk'
-import { validateKey, unpublishServer, pingMcp, getBrain, publishServer, deleteConnections, registerProject, unregisterProject, getMachineId, listVaultFiles, uploadVaultFile, deleteVaultFile } from '../lib/api.js'
+import { validateKey, unpublishServer, pingMcp, getBrain, deleteConnections, registerProject, unregisterProject, getMachineId, listVaultFiles, uploadVaultFile, deleteVaultFile } from '../lib/api.js'
 import { readStore, updateStore } from '../lib/store.js'
 import { promptLogin } from '../lib/auth.js'
 import { banner, brand, success, dim, warning, toolLine, Spinner } from '../lib/ui.js'
@@ -20,7 +20,7 @@ import { connectAll } from '../lib/discovery.js'
 import { scanForProjects } from '../lib/brain-scanner.js'
 import { writePiutConfig, writePiutSkill, ensureGitignored, hasPiutDir, removePiutDir } from '../lib/piut-dir.js'
 import { syncStaleConfigs, cycleMcpConfigs, cycleProjectConfigs, getConfiguredToolNames } from '../lib/sync.js'
-import { publishServer } from '../lib/api.js'
+import { publishServer } from '../lib/api.js' // used in deploy flow
 import { offerGlobalInstall } from '../lib/global-install.js'
 import { PROJECT_SKILL_SNIPPET } from '../lib/skill.js'
 import { CliError } from '../types.js'
@@ -539,8 +539,8 @@ async function handleManageProjects(apiKey: string, validation: ValidateResponse
         || fs.existsSync(path.join(project.path, '.github'))
       if (hasCopilot) {
         const vscodeMcpPath = path.join(project.path, '.vscode', 'mcp.json')
-        const serverConfig = copilotTool.generateConfig(slug, apiKey)
-        mergeConfig(vscodeMcpPath, copilotTool.configKey, serverConfig)
+        const serverConfig = copilotTool.generateConfig!(slug, apiKey)
+        mergeConfig(vscodeMcpPath, copilotTool.configKey!, serverConfig)
       }
     }
 

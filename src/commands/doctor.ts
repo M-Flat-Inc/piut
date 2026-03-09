@@ -135,7 +135,7 @@ export async function doctorCommand(options: DoctorOptions): Promise<void> {
 
       // Fix stale configs if --fix
       if (keyMatch === 'stale' && options.fix && apiKey && result.key.valid && result.key.slug) {
-        const serverConfig = tool.generateConfig(result.key.slug, apiKey)
+        const serverConfig = tool.generateConfig!(result.key.slug, apiKey)
         mergeConfig(configPath, resolvedKey, serverConfig)
         toolResult.fixed = true
         toolResult.keyMatch = 'match'

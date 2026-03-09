@@ -291,8 +291,8 @@ export async function connectCommand(options: ConnectOptions): Promise<void> {
         || fs.existsSync(path.join(projectPath, '.github'))
       if (hasVscode) {
         const vscodeMcpPath = path.join(projectPath, '.vscode', 'mcp.json')
-        const serverConfig = vscodeTool.generateConfig(slug, apiKey)
-        mergeConfig(vscodeMcpPath, vscodeTool.configKey, serverConfig)
+        const serverConfig = vscodeTool.generateConfig!(slug, apiKey)
+        mergeConfig(vscodeMcpPath, vscodeTool.configKey!, serverConfig)
         console.log(success(`  ✓ ${projectName}/.vscode/mcp.json`) + dim(' — VS Code MCP'))
       }
     }

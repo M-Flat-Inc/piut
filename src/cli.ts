@@ -16,13 +16,14 @@ import { interactiveMenu } from './commands/interactive.js'
 import { checkForUpdate } from './lib/update-check.js'
 import { CliError } from './types.js'
 
-const VERSION = '3.10.1'
+const VERSION = '3.11.0'
 
 /**
  * Wrap a command action so that CliError (thrown instead of process.exit(1)
  * by sub-commands) causes a non-zero exit in standalone mode.
  */
-function withExit<T extends (...args: unknown[]) => Promise<void>>(fn: T) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function withExit<T extends (...args: any[]) => Promise<void>>(fn: T) {
   return async (...args: Parameters<T>) => {
     try {
       await fn(...args)
