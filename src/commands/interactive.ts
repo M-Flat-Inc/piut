@@ -1,4 +1,4 @@
-import { select, confirm, checkbox, Separator } from '@inquirer/prompts'
+import { select, confirm, Separator } from '@inquirer/prompts'
 import fs from 'fs'
 import path from 'path'
 import { exec } from 'child_process'
@@ -24,7 +24,7 @@ import { publishServer } from '../lib/api.js' // used in deploy flow
 import { offerGlobalInstall } from '../lib/global-install.js'
 import { PROJECT_SKILL_SNIPPET } from '../lib/skill.js'
 import { CliError } from '../types.js'
-import type { ValidateResponse, ProjectInfo } from '../types.js'
+import type { ValidateResponse } from '../types.js'
 
 /** Document formats that require server-side parsing (sent as base64). */
 const DOCUMENT_EXTENSIONS = new Set([
@@ -219,15 +219,15 @@ export async function interactiveMenu(): Promise<void> {
           },
           new Separator(),
           {
-            name: 'Connect All',
-            value: 'connect-tools' as const,
-            description: 'Connect all detected AI tools to your MCP server',
+            name: 'Connect Tools + Projects',
+            value: 'connect-all' as const,
+            description: 'Connect all detected AI tools and projects to your brain',
             disabled: !isDeployed && '(deploy brain first)',
           },
           {
-            name: 'Connect Projects',
-            value: 'connect-projects' as const,
-            description: 'Manage brain references in project config files',
+            name: 'Disconnect Tools + Projects',
+            value: 'disconnect-all' as const,
+            description: 'Remove all p\u0131ut connections from tools and projects',
             disabled: !isDeployed && '(deploy brain first)',
           },
           new Separator(),
@@ -288,11 +288,11 @@ export async function interactiveMenu(): Promise<void> {
             await deployCommand({ key: apiKey })
           }
           break
-        case 'connect-tools':
-          await connectAll(currentValidation.slug, apiKey, currentValidation)
+        case 'connect-all':
+          await handleConnectAll(apiKey, currentValidation)
           break
-        case 'connect-projects':
-          await handleManageProjects(apiKey, currentValidation)
+        case 'disconnect-all':
+          await handleDisconnectAll(apiKey, currentValidation)
           break
         case 'vault-view':
           await handleVaultView(apiKey)
@@ -360,206 +360,65 @@ async function handleUndeploy(apiKey: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Connect Tools — unified view (connect + disconnect in one)
+// Connect Tools + Projects — all-or-nothing (no individual selection)
 // ---------------------------------------------------------------------------
 
-async function handleConnectTools(apiKey: string, validation: ValidateResponse): Promise<void> {
-  const { slug } = validation
+async function handleConnectAll(apiKey: string, validation: ValidateResponse): Promise<void> {
+  // Connect all tools first
+  await connectAll(validation.slug, apiKey, validation)
 
-  type DetectedItem = { tool: (typeof TOOLS)[0]; configPath: string; resolvedConfigKey: string; connected: boolean }
-  const detected: DetectedItem[] = []
-
-  for (const tool of TOOLS) {
-    const paths = resolveConfigPaths(tool)
-    for (const { filePath, configKey } of paths) {
-      const exists = fs.existsSync(filePath)
-      const parentExists = fs.existsSync(path.dirname(filePath))
-      if (exists || parentExists) {
-        const connected = exists && !!configKey && isPiutConfigured(filePath, configKey)
-        detected.push({ tool, configPath: filePath, resolvedConfigKey: configKey, connected })
-        break
-      }
-    }
-  }
-
-  if (detected.length === 0) {
-    console.log(warning('  No supported AI tools detected.'))
-    console.log()
-    return
-  }
-
-  const mcpTools = detected.filter(d => !d.tool.skillOnly)
-  const skillOnlyTools = detected.filter(d => d.tool.skillOnly)
-
-  const connectedCount = mcpTools.filter(d => d.connected).length
-  const availableCount = mcpTools.length - connectedCount
-  if (connectedCount > 0 || availableCount > 0) {
-    const parts: string[] = []
-    if (connectedCount > 0) parts.push(`${connectedCount} connected`)
-    if (availableCount > 0) parts.push(`${availableCount} available`)
-    if (skillOnlyTools.length > 0) parts.push(`${skillOnlyTools.length} skill-only`)
-    console.log(dim(`  ${parts.join(', ')}`))
-  }
-  console.log()
-
-  if (mcpTools.length === 0) {
-    console.log(dim('  Detected tools are skill-only (no MCP config to manage).'))
-    if (skillOnlyTools.length > 0) {
-      console.log(dim(`  Skill-only: ${skillOnlyTools.map(d => d.tool.name).join(', ')}`))
-    }
-    console.log(dim('  Use "Connect Projects" to add skill files to your projects.'))
-    console.log()
-    return
-  }
-
-  const choices = mcpTools.map(d => ({
-    name: `${d.tool.name}${d.connected ? dim(' (connected)') : ''}`,
-    value: d,
-    checked: d.connected,
-  }))
-
-  const selected = await checkbox({
-    message: 'Select tools to keep connected (toggle with space):',
-    choices,
-  })
-
-  // Determine what changed
-  const toConnect = selected.filter(s => !s.connected)
-  const toDisconnect = mcpTools.filter(d => d.connected && !selected.includes(d))
-
-  if (toConnect.length === 0 && toDisconnect.length === 0) {
-    console.log(dim('  No changes.'))
-    console.log()
-    return
-  }
-
-  console.log()
-
-  // Connect new tools
-  for (const { tool, configPath, resolvedConfigKey } of toConnect) {
-    if (tool.generateConfig && resolvedConfigKey) {
-      const serverConfig = tool.generateConfig(slug, apiKey)
-      mergeConfig(configPath, resolvedConfigKey, serverConfig)
-      toolLine(tool.name, success('connected'), '\u2714')
-    }
-  }
-
-  // Disconnect removed tools
-  const removedNames: string[] = []
-  for (const { tool, configPath, resolvedConfigKey } of toDisconnect) {
-    if (!resolvedConfigKey) continue
-    const removed = removeFromConfig(configPath, resolvedConfigKey)
-    if (removed) {
-      removedNames.push(tool.name)
-      toolLine(tool.name, warning('disconnected'), '\u2714')
-    }
-  }
-
-  // Show skill-only tools reminder
-  if (skillOnlyTools.length > 0) {
-    console.log(dim(`  Skill-only (use "Connect Projects"): ${skillOnlyTools.map(d => d.tool.name).join(', ')}`))
-  }
-
-  // Register tool connections (fire-and-forget)
-  if (toConnect.length > 0 && validation.serverUrl) {
-    await Promise.all(
-      toConnect.map(({ tool }) => pingMcp(validation.serverUrl, apiKey, tool.name))
-    )
-  }
-
-  // Clear server-side disconnections (best-effort)
-  if (removedNames.length > 0) {
-    deleteConnections(apiKey, removedNames).catch(() => {})
-  }
-
-  console.log()
-  console.log(dim('  Restart your AI tools for changes to take effect.'))
-  console.log()
-}
-
-// ---------------------------------------------------------------------------
-// Connect Projects — unified view (connect + disconnect in one)
-// ---------------------------------------------------------------------------
-
-async function handleManageProjects(apiKey: string, validation: ValidateResponse): Promise<void> {
-  const { slug, serverUrl } = validation
-
-  console.log(dim('  Scanning for projects...'))
-
+  // Then connect all projects
   const projects = scanForProjects()
+  const unconnected = projects.filter(p => !hasPiutDir(p.path))
 
-  if (projects.length === 0) {
-    console.log(warning('  No projects found.'))
-    console.log(dim('  Try running from a directory with your projects.'))
+  if (unconnected.length === 0) {
+    if (projects.length > 0) {
+      console.log(dim(`  All ${projects.length} project(s) already connected.`))
+    } else {
+      console.log(dim('  No projects found.'))
+    }
     console.log()
     return
   }
 
-  // Determine connected status for each project
-  type ProjectItem = { project: ProjectInfo; connected: boolean }
-  const items: ProjectItem[] = projects.map(p => ({
-    project: p,
-    connected: hasPiutDir(p.path),
-  }))
-
-  const connectedCount = items.filter(i => i.connected).length
-  const availableCount = items.length - connectedCount
-  const parts: string[] = []
-  if (connectedCount > 0) parts.push(`${connectedCount} connected`)
-  if (availableCount > 0) parts.push(`${availableCount} available`)
-  console.log(dim(`  ${parts.join(', ')}`))
+  const projectNames = unconnected.map(p => path.basename(p.path)).join(', ')
+  console.log(dim(`  Projects to connect: ${projectNames}`))
   console.log()
 
-  const choices = items.map(i => ({
-    name: `${i.project.name}${i.connected ? dim(' (connected)') : ''}`,
-    value: i,
-    checked: i.connected,
-  }))
-
-  const selected = await checkbox({
-    message: 'Select projects to keep connected (toggle with space):',
-    choices,
+  const proceed = await confirm({
+    message: `Connect ${unconnected.length} project${unconnected.length === 1 ? '' : 's'}?`,
+    default: true,
   })
 
-  const toConnect = selected.filter(s => !s.connected)
-  const toDisconnect = items.filter(i => i.connected && !selected.includes(i))
-
-  if (toConnect.length === 0 && toDisconnect.length === 0) {
-    console.log(dim('  No changes.'))
+  if (!proceed) {
+    console.log(dim('  Skipped.'))
     console.log()
     return
   }
 
   console.log()
-
-  // --- Connect new projects ---
   const copilotTool = TOOLS.find(t => t.id === 'copilot')
 
-  for (const { project } of toConnect) {
+  for (const project of unconnected) {
     const projectName = path.basename(project.path)
-
-    // Create .piut/ directory with credentials and skill file
-    writePiutConfig(project.path, { slug, apiKey, serverUrl })
-    await writePiutSkill(project.path, slug, apiKey)
+    writePiutConfig(project.path, { slug: validation.slug, apiKey, serverUrl: validation.serverUrl })
+    await writePiutSkill(project.path, validation.slug, apiKey)
     ensureGitignored(project.path)
 
-    // Write Copilot project-local MCP config if applicable
     if (copilotTool) {
       const hasCopilot = fs.existsSync(path.join(project.path, '.github', 'copilot-instructions.md'))
         || fs.existsSync(path.join(project.path, '.github'))
       if (hasCopilot) {
         const vscodeMcpPath = path.join(project.path, '.vscode', 'mcp.json')
-        const serverConfig = copilotTool.generateConfig!(slug, apiKey)
+        const serverConfig = copilotTool.generateConfig!(validation.slug, apiKey)
         mergeConfig(vscodeMcpPath, copilotTool.configKey!, serverConfig)
       }
     }
 
-    // Write rule files
     for (const rule of RULE_FILES) {
       if (!rule.detect(project)) continue
       const absPath = path.join(project.path, rule.filePath)
       if (fs.existsSync(absPath) && hasPiutReference(absPath)) continue
-
       if (rule.strategy === 'create' || !fs.existsSync(absPath)) {
         const isAppendType = rule.strategy === 'append'
         const content = isAppendType ? PROJECT_SKILL_SNIPPET + '\n' : DEDICATED_FILE_CONTENT
@@ -572,7 +431,6 @@ async function handleManageProjects(apiKey: string, validation: ValidateResponse
 
     toolLine(projectName, success('connected'), '\u2714')
 
-    // Register project server-side (best-effort)
     const machineId = getMachineId()
     const toolsDetected = RULE_FILES.filter(r => r.detect(project)).map(r => r.tool)
     registerProject(apiKey, {
@@ -584,11 +442,71 @@ async function handleManageProjects(apiKey: string, validation: ValidateResponse
     }).catch(() => {})
   }
 
-  // --- Disconnect removed projects ---
-  for (const { project } of toDisconnect) {
+  console.log()
+  console.log(success(`  ${unconnected.length} project(s) connected.`))
+  console.log()
+}
+
+// ---------------------------------------------------------------------------
+// Disconnect Tools + Projects — all-or-nothing
+// ---------------------------------------------------------------------------
+
+async function handleDisconnectAll(apiKey: string, validation: ValidateResponse): Promise<void> {
+  // Gather what's connected
+  const { detectTools } = await import('../lib/discovery.js')
+  const detectedTools = detectTools()
+  const connectedTools = detectedTools.filter(d => !d.tool.skillOnly && d.alreadyConfigured)
+
+  const projects = scanForProjects()
+  const connectedProjects = projects.filter(p => hasPiutDir(p.path))
+
+  if (connectedTools.length === 0 && connectedProjects.length === 0) {
+    console.log(dim('  Nothing is connected.'))
+    console.log()
+    return
+  }
+
+  // Show what will be disconnected
+  if (connectedTools.length > 0) {
+    console.log(dim(`  Tools: ${connectedTools.map(d => d.tool.name).join(', ')}`))
+  }
+  if (connectedProjects.length > 0) {
+    console.log(dim(`  Projects: ${connectedProjects.map(p => path.basename(p.path)).join(', ')}`))
+  }
+  console.log()
+
+  const proceed = await confirm({
+    message: `Disconnect ${connectedTools.length} tool(s) and ${connectedProjects.length} project(s)?`,
+    default: false,
+  })
+
+  if (!proceed) {
+    console.log(dim('  Cancelled.'))
+    console.log()
+    return
+  }
+
+  console.log()
+
+  // Disconnect tools
+  const removedNames: string[] = []
+  for (const { tool, configPath, resolvedConfigKey } of connectedTools) {
+    if (!resolvedConfigKey) continue
+    const removed = removeFromConfig(configPath, resolvedConfigKey)
+    if (removed) {
+      removedNames.push(tool.name)
+      toolLine(tool.name, warning('disconnected'), '\u2714')
+    }
+  }
+
+  if (removedNames.length > 0) {
+    deleteConnections(apiKey, removedNames).catch(() => {})
+  }
+
+  // Disconnect projects
+  for (const project of connectedProjects) {
     const projectName = path.basename(project.path)
 
-    // Remove dedicated rule files
     for (const dedicatedFile of DEDICATED_FILES) {
       const absPath = path.join(project.path, dedicatedFile)
       if (fs.existsSync(absPath) && hasPiutReference(absPath)) {
@@ -596,7 +514,6 @@ async function handleManageProjects(apiKey: string, validation: ValidateResponse
       }
     }
 
-    // Remove piut sections from append files
     for (const appendFile of APPEND_FILES) {
       const absPath = path.join(project.path, appendFile)
       if (fs.existsSync(absPath) && hasPiutReference(absPath)) {
@@ -604,29 +521,20 @@ async function handleManageProjects(apiKey: string, validation: ValidateResponse
       }
     }
 
-    // Remove .vscode/mcp.json piut config
     const vscodeMcpPath = path.join(project.path, '.vscode', 'mcp.json')
     if (fs.existsSync(vscodeMcpPath) && isPiutConfigured(vscodeMcpPath, 'servers')) {
       removeFromConfig(vscodeMcpPath, 'servers')
     }
 
-    // Remove .piut/ directory
     removePiutDir(project.path)
-
     toolLine(projectName, warning('disconnected'), '\u2714')
 
-    // Unregister project server-side (best-effort)
     const machineId = getMachineId()
     unregisterProject(apiKey, project.path, machineId).catch(() => {})
   }
 
   console.log()
-  if (toConnect.length > 0) {
-    console.log(success(`  ${toConnect.length} project(s) connected.`))
-  }
-  if (toDisconnect.length > 0) {
-    console.log(success(`  ${toDisconnect.length} project(s) disconnected.`))
-  }
+  console.log(dim('  Restart your AI tools for changes to take effect.'))
   console.log()
 }
 
@@ -658,8 +566,8 @@ async function handleCleanBrain(apiKey: string): Promise<void> {
     return
   }
 
-  const spinner = new Spinner('  Cleaning brain...')
-  spinner.start()
+  const spinner = new Spinner()
+  spinner.start('  Cleaning brain...')
 
   try {
     const result = await cleanBrain(apiKey)
