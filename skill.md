@@ -123,6 +123,14 @@ Execute a natural language command against the context. AI reads the context, pe
 
 Rate-limited to 10 req/min.
 
+### clean_brain
+
+Clean and organize the entire brain. Removes duplicates, fixes formatting, sorts chronologically, and flags contradictions. Returns a summary with stats and any contradictions found. Heavy operation — use sparingly.
+
+No parameters.
+
+Rate-limited to 3 req/hour.
+
 ### list_files
 
 List all files in the vault with metadata (filename, type, size, summary).
@@ -164,6 +172,7 @@ Delete a file from the vault.
 |-------|-------|
 | Standard tools per minute (per key) | 100 |
 | AI tools per minute (`update_brain`, `prompt_brain`, `write_file`) | 10 |
+| Brain clean per hour (`clean_brain`) | 3 |
 | Requests per day | 500 |
 | Vault uploads per hour | 10 |
 
@@ -200,11 +209,6 @@ Token estimation: ~4 characters = 1 token.
 | -32009 | Bad prompt (min 3 chars) |
 | -32010 | Section token limit exceeded |
 | -32011 | Total context token limit exceeded |
-| -32012 | Vault file not found |
-| -32013 | Vault file already exists |
-| -32014 | Vault file too large |
-| -32015 | Vault storage quota exceeded |
-| -32016 | Unsupported file type |
 
 Unexpected parameters are not rejected but trigger a warning in the response. If you see a "Warning: unexpected parameter(s)" message, check the tool schema via `tools/list`.
 
