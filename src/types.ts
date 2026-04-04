@@ -29,8 +29,8 @@ export interface ToolDefinition {
   }
   /** Skill file path (relative to project root) */
   skillFilePath?: string
-  /** Quick command alternative (e.g., claude mcp add-json) */
-  quickCommand?: (slug: string, key: string) => string
+  /** Quick command alternative (e.g., claude mcp add-json). Returns [command, ...args] for execFileSync. */
+  quickCommand?: (slug: string, key: string) => [string, ...string[]]
   /** Generate the server config object for this tool.
    *  Omit for skill-only tools — they'll be detected but MCP config won't be written. */
   generateConfig?: (slug: string, key: string) => Record<string, unknown>

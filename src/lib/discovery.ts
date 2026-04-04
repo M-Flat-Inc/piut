@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 import { confirm } from '@inquirer/prompts'
 import type { DetectedTool, ValidateResponse } from '../types.js'
 import { TOOLS } from './tools.js'
@@ -100,7 +100,8 @@ export async function connectAll(
     // Claude Code: try quick command first
     if (tool.id === 'claude-code' && tool.quickCommand && isCommandAvailable('claude')) {
       try {
-        execSync(tool.quickCommand(slug, apiKey), { stdio: 'pipe' })
+        const [cmd, ...args] = tool.quickCommand(slug, apiKey);
+        execFileSync(cmd, args, { stdio: 'pipe' })
         connected++
         console.log(`    ${tool.name.padEnd(20)} ${success('done')}`)
         continue

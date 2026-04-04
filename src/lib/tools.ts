@@ -36,12 +36,14 @@ export const TOOLS: ToolDefinition[] = [
       project: ['.mcp.json'],
     },
     skillFilePath: 'CLAUDE.md',
-    quickCommand: (slug, key) =>
-      `claude mcp add-json piut '${JSON.stringify({
+    quickCommand: (slug, key) => [
+      'claude', 'mcp', 'add-json', 'piut',
+      JSON.stringify({
         type: 'http',
         url: MCP_URL(slug),
         headers: { ...AUTH_HEADER(key), ...machineHeaders('Claude Code') },
-      })}'`,
+      }),
+    ],
     generateConfig: (slug, key) => ({
       type: 'http',
       url: MCP_URL(slug),
@@ -170,8 +172,10 @@ export const TOOLS: ToolDefinition[] = [
       win32: ['~/.mcporter/mcporter.json', '~/.openclaw/workspace/config/mcporter.json'],
       linux: ['~/.mcporter/mcporter.json', '~/.openclaw/workspace/config/mcporter.json'],
     },
-    quickCommand: (slug, key) =>
-      `npx mcporter config add piut ${MCP_URL(slug)} --header "Authorization=Bearer ${key}"`,
+    quickCommand: (slug, key) => [
+      'npx', 'mcporter', 'config', 'add', 'piut',
+      MCP_URL(slug), '--header', `Authorization=Bearer ${key}`,
+    ],
     generateConfig: (slug, key) => ({
       url: MCP_URL(slug),
       headers: { ...AUTH_HEADER(key), ...machineHeaders('OpenClaw') },

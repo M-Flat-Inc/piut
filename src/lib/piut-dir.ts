@@ -2,6 +2,9 @@ import fs from 'fs'
 import path from 'path'
 
 const API_BASE = process.env.PIUT_API_BASE || 'https://piut.com'
+if (!API_BASE.startsWith('https://') && !API_BASE.startsWith('http://localhost') && !API_BASE.startsWith('http://127.0.0.1')) {
+  throw new Error('PIUT_API_BASE must use HTTPS (or http://localhost / http://127.0.0.1 for development)')
+}
 
 export interface PiutProjectConfig {
   slug: string
@@ -62,7 +65,7 @@ export function writePiutConfig(projectPath: string, config: PiutProjectConfig):
   fs.writeFileSync(
     path.join(dir, CONFIG_FILE),
     JSON.stringify(config, null, 2) + '\n',
-    'utf-8',
+    { encoding: 'utf-8', mode: 0o600 },
   )
 }
 

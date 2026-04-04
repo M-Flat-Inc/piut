@@ -22,15 +22,23 @@ describe('update-check', () => {
   let consoleSpy: ReturnType<typeof vi.spyOn>
   let exitSpy: ReturnType<typeof vi.spyOn>
 
+  const savedNpmCommand = process.env.npm_command
+  const savedUnderscore = process.env._
+
   beforeEach(() => {
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
+    // Clear npx detection env vars so tests aren't affected by test runner
+    delete process.env.npm_command
+    process.env._ = ''
     vi.clearAllMocks()
   })
 
   afterEach(() => {
     consoleSpy.mockRestore()
     exitSpy.mockRestore()
+    process.env.npm_command = savedNpmCommand
+    process.env._ = savedUnderscore
   })
 
   it('does nothing when fetch fails', async () => {

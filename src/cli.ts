@@ -158,11 +158,11 @@ program
   .action(() => updateCommand(VERSION))
 
 // Commander's built-in --version skips preAction hooks, so intercept here
-// to ensure the update check runs even on `piut --version`
 const args = process.argv.slice(2)
 if (args.includes('--version') || args.includes('-V')) {
   console.log(VERSION)
-  await checkForUpdate(VERSION)
+  // Fire-and-forget update check — prints notice on exit, doesn't pollute version output
+  checkForUpdate(VERSION).catch(() => {})
   process.exit(0)
 }
 
